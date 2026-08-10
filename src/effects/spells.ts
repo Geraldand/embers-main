@@ -284,21 +284,24 @@ export async function doSpell(spellID: string, playerID: string, isGM: boolean) 
     const settingsGridScaleFactor = getSettingsValue(LOCAL_STORAGE_KEYS.GRID_SCALING_FACTOR);
     const gridScaleFactorPromise = settingsGridScaleFactor != null ? new Promise(resolve => resolve(settingsGridScaleFactor)) : getDefaultGridScaleFactor();
     const [targets, gridScaleFactor] = await Promise.all([getSortedTargets(), gridScaleFactorPromise]);
-    if (!getSettingsValue(LOCAL_STORAGE_KEYS.KEEP_SELECTED_TARGETS)) {
-        OBR.scene.local.deleteItems(targets.map(item => item.id));
-    }
 
     const replicationType = spell.replicate ?? "no";
     const copyDelay = spell.copy ?? 150;
     const parameterValuesString = localStorage.getItem(`${APP_KEY}/spell-parameters/${spellID}`);
 
     const parameterValues = parameterValuesString ? JSON.parse(parameterValuesString) : {};
+
+    const playerMetadata = await OBR.player.getMetadata();
+    const externalParams = playerMetadata[`${APP_KEY}/spell-parameters`];
+    if (externalParams && typeof externalParams === "object") {
+        Object.assign(parameterValues, externalParams);
+    }
+
     for (const parameter of spell.parameters ?? []) {
         if (parameterValues[parameter.id] == undefined) {
             parameterValues[parameter.id] = parameter.defaultValue;
         }
         if (parameter.id === "radius" || parameter.id === "length" || parameter.id === "size") {
-            // FIXME: this doesn't seem like a clean way to do it
             parameterValues[parameter.id] *= gridScaleFactor as number;
         }
     }
@@ -320,7 +323,6 @@ export async function doSpell(spellID: string, playerID: string, isGM: boolean) 
     }
 
     for (const variableSet of variables) {
-        // Add all targets back into variableSet
         variableSet.globalTargets = targetObjects;
         const { value, error } = resolveBlueprint(spell.blueprints ?? [], variableSet);
         if (error) {
@@ -348,4 +350,14 @@ export async function doSpell(spellID: string, playerID: string, isGM: boolean) 
         }
     };
     OBR.broadcast.sendMessage(MESSAGE_CHANNEL, message, { destination: "ALL" });
+
+    // 施放完成後，清空本地目標選取 Marker
+    const localItems = await OBR.scene.local.getItems();
+    const targetHighlights = localItems.filter(item => item.metadata[`${APP_KEY}/target-highlight`] !== undefined);
+    if (targetHighlights.length > 0) {
+        await OBR.scene.local.deleteItems(targetHighlights.map(item => item.id));
+    }
+
+    // 將工具切換回預設移動模式
+    await OBR.tool.activateTool("com.owlbear-rodeo.move");
 }
