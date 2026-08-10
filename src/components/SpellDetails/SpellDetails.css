@@ -1,0 +1,49 @@
+.spell-details-header {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.spell-details-thumbnail {
+    width: 3rem;
+    height: 3rem;
+    object-fit: contain;
+}
+
+.spell-details-divider {
+    padding-top: 0.5rem;
+}
+
+.small-select {
+    height: 1.4rem;
+    font-size: 0.875rem;
+}
+
+.spell-details-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 100%;
+    overflow: hidden;
+    gap: 1rem;
+}
+
+.spell-details-row p {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.spell-details-row > * {
+    min-width: 0;
+}
+
+.spell-details-row > .label {
+    min-width: fit-content;
+}
+
+.label {
+    font-weight: 700;
+}
