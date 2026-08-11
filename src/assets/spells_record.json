@@ -11,10 +11,23 @@
             {
                 "type": "effect",
                 "id": "shocking_grasp",
+                "duration": 1200,
                 "effectProperties": {
                     "source": "$targets[0].position",
-                    "destination": "$targets[1].position",
-                    "size": 1                   
+                    "size": 3,
+                    "rotation": {
+                        "name": "add",
+                        "arguments": [
+                            {
+                                "name": "rotation",
+                                "arguments": [
+                                    "$targets[0].position",
+                                    "$targets[1].position"
+                                ]
+                            },
+                            0
+                        ]
+                    }
                 }
             },
             {

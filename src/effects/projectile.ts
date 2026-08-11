@@ -21,7 +21,9 @@ export function precomputeProjectileAssets(projectileInfo: ProjectileProperties,
         return assets;
     }
 
-    for (let i = 0; i < projectileInfo.copies; i++) {
+    const copies = projectileInfo.copies ?? 1;
+
+    for (let i = 0; i < copies; i++) {
         const url = getEffectURL(projectileInfo.name, effectVariantName, i % (effect.variants[effectVariantName].name.length));
         if (url == undefined) {
             log_error(`Could not find URL for effect "${projectileInfo.name}" (selected variant: ${effectVariantName})`);
@@ -34,7 +36,7 @@ export function precomputeProjectileAssets(projectileInfo: ProjectileProperties,
 }
 
 export function getProjectilePose(source: Vector2, destination: Vector2, dpi: number) {
-    const distance = getDistance(source, destination) / dpi;
+    const distance = getDistance(source, destination) / (dpi || 200);
     const rotation = getRotation(source, destination);
     const position = {
         x: source.x,
@@ -60,18 +62,17 @@ export async function projectile(
         return;
     }
 
-    // We need to compute the distance and angle between the source and destination of the projectile
-    // to choose an appropriate variant and to rotate and scale it properly.
     const { distance, rotation, position } = getProjectilePose(
         projectileInfo.source,
         projectileInfo.destination,
         projectileInfo.dpi
     );
 
-    // For each copy, create a new Image object based on a variant of our chosen effect
     let realDuration = 0;
     const images: Image[] = [];
-    for (let i = 0; i < projectileInfo.copies; i++) {
+    const copies = projectileInfo.copies ?? 1;
+
+    for (let i = 0; i < copies; i++) {
         const result = buildEffectImage(
             projectileInfo.name,
             effect,
@@ -101,7 +102,7 @@ export async function projectile(
         else {
             realDuration = Math.max(realDuration, effectDuration);
         }
-        // FIXME: do this another way
+        
         const builtImage = image.build();
         if (projectileInfo.sourceId || projectileInfo.destinationId) {
             builtImage.metadata[spellMetadataKey] = { ...builtImage.metadata[spellMetadataKey] ?? {}, sourceId: projectileInfo.sourceId, destinationId: projectileInfo.destinationId };
@@ -109,6 +110,7 @@ export async function projectile(
         images.push(builtImage);
     }
 
-    // Add all items to the local scene and wait for them to be removed if they are temporary
-    await registerEffect(images, realDuration, spellCaster);
+    if (images.length > 0) {
+        await registerEffect(images, realDuration, spellCaster);
+    }
 }

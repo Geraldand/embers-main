@@ -21,15 +21,23 @@ export async function aoe(
         log_error(`Could not find effect "${aoeEffectProperties.name}"`);
         return;
     }
-    const effectVariantName = getVariantName(aoeEffectProperties.name, aoeEffectProperties.size * effect.dpi);
-        if (effectVariantName == undefined) {
-            log_error(`Could not find adequate variant for effect "${aoeEffectProperties.name}"`);
-            return undefined;
+
+    // 引擎傳進來的 size 已經是格子數，直接使用即可
+    let sizeInSquares = aoeEffectProperties.size;
+    if (!sizeInSquares || sizeInSquares <= 0) {
+        sizeInSquares = 1; 
     }
+
+    const effectVariantName = getVariantName(aoeEffectProperties.name, sizeInSquares * effect.dpi);
+    if (effectVariantName == undefined) {
+        log_error(`Could not find adequate variant for effect "${aoeEffectProperties.name}"`);
+        return undefined;
+    }
+
     const result = buildEffectImage(
         aoeEffectProperties.name,
         effect,
-        aoeEffectProperties.size,
+        sizeInSquares,
         { x: 0.5, y: 0.5 },
         aoeEffectProperties.source,
         aoeEffectProperties.rotation ?? 0,
@@ -40,16 +48,16 @@ export async function aoe(
         duration,
         loops,
         metadata,
-        layer,
-        zIndex,
+        layer || "ATTACHMENT", 
+        zIndex ?? 100, 
         spellName,
         spellCaster
     );
+
     if (result == undefined) {
         return;
     }
+    
     const { image, effectDuration } = result;
-
-    // Add all items to the local scene and wait for them to be removed if they are temporary
     await registerEffect([image.build()], effectDuration, spellCaster);
 }
