@@ -1,24 +1,23 @@
 {
     "shocking_grasp": {
-        "name": "Shocking Grasp",
+        "name": "電爪",
         "minTargets": 1,
-        "maxTargets": 1,
-        "replicate": "no",
-        "firstTargetIsCaster": false,
+        "thumbnail": "Custom/Shocking_Grasp/Shocking-Grasp-5E.webp",
+        "replicate": "all",
         "copy": -1,
         "blueprints": [
             {
                 "type": "effect",
                 "id": "shocking_grasp",
-                "attachedTo": "$targets[0].id",
                 "effectProperties": {
                     "source": "$targets[0].position",
-                    "size": 1200
+                    "size": "$targets[0].size"
                 }
             },
             {
                 "type": "action",
                 "id": "none",
+                "delay": 500,
                 "sound": "shocking-grasp.mp3"
             }
         ]
@@ -2964,95 +2963,95 @@
                 "content": [
                     {
                         "value": "club",
-                        "label": "Club"
+                        "label": "棍棒"
                     },
                     {
                         "value": "dagger",
-                        "label": "Dagger"
+                        "label": "短劍"
                     },
                     {
                         "value": "falchion",
-                        "label": "Falchion"
+                        "label": "日耳曼彎刀"
                     },
                     {
                         "value": "generic_slash",
-                        "label": "Generic Slash"
+                        "label": "通用斬擊"
                     },
                     {
                         "value": "generic_whirlwind",
-                        "label": "Generic Whirlwind"
+                        "label": "通用旋風"
                     },
                     {
                         "value": "glaive",
-                        "label": "Glaive"
+                        "label": " Glaive（長刃刀）"
                     },
                     {
                         "value": "great_axe",
-                        "label": "Greataxe"
+                        "label": "巨斧"
                     },
                     {
                         "value": "great_club",
-                        "label": "Greatclub"
+                        "label": "巨棒"
                     },
                     {
                         "value": "great_sword",
-                        "label": "Greatsword"
+                        "label": "巨劍"
                     },
                     {
                         "value": "halberd",
-                        "label": "Halberd"
+                        "label": "戟"
                     },
                     {
                         "value": "hammer",
-                        "label": "Hammer"
+                        "label": "鐵鎚"
                     },
                     {
                         "value": "hand_axe",
-                        "label": "Handaxe"
+                        "label": "手斧"
                     },
                     {
                         "value": "laser_sword",
-                        "label": "Laser Sword"
+                        "label": "光劍"
                     },
                     {
                         "value": "mace",
-                        "label": "Mace"
+                        "label": "權杖"
                     },
                     {
                         "value": "maul",
-                        "label": "Maul"
+                        "label": "大型木槌"
                     },
                     {
                         "value": "quarterstaff",
-                        "label": "Quarterstaff"
+                        "label": "木棍"
                     },
                     {
                         "value": "rapier",
-                        "label": "Rapier"
+                        "label": "刺劍"
                     },
                     {
                         "value": "scimitar",
-                        "label": "Scimitar"
+                        "label": "彎刀"
                     },
                     {
                         "value": "shortsword",
-                        "label": "Shortsword"
+                        "label": "短劍"
                     },
                     {
                         "value": "spear",
-                        "label": "Spear"
+                        "label": "長矛"
                     },
                     {
                         "value": "sword",
-                        "label": "Sword"
+                        "label": "劍"
                     },
                     {
                         "value": "warhammer",
-                        "label": "Warhammer"
+                        "label": "戰錘"
                     },
                     {
                         "value": "wrench",
-                        "label": "Wrench"
+                        "label": "扳手"
                     }
                 ]
             }
