@@ -175,7 +175,9 @@ async function create_token(_interaction: Interaction|undefined, localOnly: bool
         .textItemType(imageObj.textItemType)
         .visible(imageObj.visible)
         .locked(imageObj.locked)
-        .layer(imageObj.type);
+        .layer(imageObj.type)
+        // 👇 改用更明確的 key，避免跟其他設定衝突
+        .metadata({ "eu.armindo.embers/is-effect-token": true });
 
     if (imageObj.description) {
         imageItem = imageItem.description(imageObj.description);

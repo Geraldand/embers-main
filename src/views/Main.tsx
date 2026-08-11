@@ -9,7 +9,6 @@ import {
     FaPlus,
 } from "react-icons/fa6";
 import OBR from "@owlbear-rodeo/sdk";
-import { toolID } from "../effectsTool";
 import { useEffect, useState } from "react";
 
 import CustomSpells from "../components/CustomSpells";
@@ -21,6 +20,9 @@ import SpellBook from "../components/SpellBook";
 import SpellDetails from "../components/SpellDetails";
 import { useOBR } from "../react-obr/providers";
 
+function playClickSound() {
+    try { const audio = new Audio('/click.mp3'); audio.volume = 0.15; audio.play().catch(() => { }); } catch (e) { }
+}
 const MENU_OPTIONS = [
     {
         label: "Spellbook",
@@ -58,37 +60,33 @@ const SPELL_DETAIL_TAB = 1;
 
 export default function Main() {
     const obr = useOBR();
-    // const [toolSelected, setToolSelected] = useState(false);
-    const [previouslySelectedTab, setPreviouslySelectedTab] = useState(0);
     const [selectedTab, setSelectedTab] = useState(0);
-
     const [isGM, setIsGM] = useState(false);
+    const [role, setRole] = useState<"GM" | "PLAYER" | null>(null);
 
     useEffect(() => {
         if (!obr.ready || !obr.player?.role) {
             return;
         }
-        if (obr.player.role != "GM" && isGM) {
-            setIsGM(false);
-        } else if (obr.player.role == "GM" && !isGM) {
-            setIsGM(true);
-        }
-    }, [obr.ready, obr.player?.role, isGM]);
 
-    useEffect(() => {
-        if (!obr.ready) {
-            return;
-        }
+        // 🚀 修復 1：補上 setRole，確保能正確辨識 PLAYER 身分
+        const currentRole = obr.player.role as "GM" | "PLAYER";
+        setRole(currentRole);
+        setIsGM(currentRole === "GM");
+    }, [obr.ready, obr.player?.role]);
 
-        return OBR.tool.onToolChange((tool) => {
-            const selectedOurTool = tool === toolID;
-            // setToolSelected(selectedOurTool);
-            setPreviouslySelectedTab(selectedTab);
-            setSelectedTab(
-                selectedOurTool ? SPELL_DETAIL_TAB : previouslySelectedTab
-            );
-        });
-    }, [obr.ready, selectedTab, previouslySelectedTab]);
+    // 🚀 修復 2：已移除原本的 OBR.tool.onToolChange 自動跳轉邏輯，防止切換工具時跳轉至 Current Spell
+
+    // 🛡️ 玩家權限攔截：PLAYER 只能看到提示畫面
+    if (role === "PLAYER") {
+        return (
+            <div style={{ height: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", backgroundColor: "#111827", color: "#9ca3af", textAlign: "center", padding: "2rem" }}>
+                <div style={{ fontSize: "4rem", marginBottom: "1rem", animation: "pulse 2s infinite" }}>🔥</div>
+                <h2 style={{ fontSize: "1.5rem", fontWeight: "bold", color: "#f3f4f6", margin: "0 0 0.5rem 0" }}>你的 DM 正在偷偷凝聚火球術...</h2>
+                <p style={{ fontSize: "1rem", margin: 0 }}>做好準備</p>
+            </div>
+        );
+    }
 
     return (
         <Box
@@ -110,7 +108,11 @@ export default function Main() {
                         },
                         pt: 2,
                     }}
-                    onChange={(_, value) => setSelectedTab(value)}
+                    // 👇 2. 修改這裡的 onChange 👇
+                    onChange={(_, value) => {
+                        playClickSound(); // 切換分頁時播放音效
+                        setSelectedTab(value);
+                    }}
                 >
                     {MENU_OPTIONS.map((option, index) => {
                         if (option.role == "GM" && !isGM) return;
@@ -136,10 +138,10 @@ export default function Main() {
                         height:
                             selectedTab === 0
                                 ? "calc(100vh - 7.5rem)"
-                                : "calc(100vh - 4rem)", // Adjust the height as needed
-                        scrollbarWidth: "thin", // For Firefox
+                                : "calc(100vh - 4rem)",
+                        scrollbarWidth: "none",
                         "&::-webkit-scrollbar": {
-                            width: "8px", // For Chrome, Safari, and Opera
+                            display: "none",
                         },
                     }}
                 >

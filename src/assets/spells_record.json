@@ -1,4 +1,121 @@
 {
+    "shocking_grasp": {
+        "name": "Shocking Grasp",
+        "minTargets": 1,
+        "maxTargets": 1,
+        "replicate": "no",
+        "firstTargetIsCaster": false,
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "shocking_grasp",
+                "attachedTo": "$targets[0].id",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": 1200
+                }
+            },
+            {
+                "type": "action",
+                "id": "none",
+                "sound": "shocking-grasp.mp3"
+            }
+        ]
+    },
+    "breath_weapon": {
+        "name": "噴吐氣息",
+        "minTargets": 2,
+        "maxTargets": 2,
+        "thumbnail": "Custom/Breath_Weapon/BreathWeapon_Fire01_Regular_Orange_30ft_Line_Burst_Thumb.webp",
+        "replicate": "no",
+        "firstTargetIsCaster": true,
+        "copy": -1,
+        "parameters": [
+            {
+                "name": "氣息屬性",
+                "id": "element",
+                "type": "options",
+                "defaultValue": "fire",
+                "content": [
+                    {
+                        "value": "fire",
+                        "label": "火焰"
+                    }
+                ]
+            },
+            {
+                "name": "Length (in cells)",
+                "id": "length",
+                "type": "number",
+                "defaultValue": 6,
+                "content": {
+                    "min": 1
+                }
+            }
+        ],
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": {
+                    "name": "concat",
+                    "arguments": [
+                        "breath_weapon_",
+                        "$element"
+                    ]
+                },
+                "attachedTo": "$targets[0].id",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "rotation": {
+                        "name": "rotation",
+                        "arguments": [
+                            "$targets[0].position",
+                            "$targets[1].position"
+                        ]
+                    },
+                    "size": "$length"
+                }
+            },
+            {
+                "type": "action",
+                "id": "none",
+                "delay": 2500,
+                "sound": {
+                    "name": "concat",
+                    "arguments": [
+                        "BreathWeapon_",
+                        "$element",
+                        ".mp3"
+                    ]
+                }
+            }
+        ]
+    },
+    "thorn_whip": {
+        "name": "荊棘之鞭",
+        "minTargets": 2,
+        "thumbnail": "Custom/Thorn_Whip/Thorn_Whip_Thumb.webp",
+        "replicate": "first_to_all",
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "thorn_whip",
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "destination": "$targets[1].position",
+                    "copies": "$targets[1].count"
+                }
+            },
+            {
+                "type": "action",
+                "id": "none",
+                "delay": 800,
+                "sound": "Thorn_Whip.mp3"
+            }
+        ]
+    },
     "dancing_lights": {
         "name": "舞光術",
         "minTargets": 1,
@@ -12,13 +129,34 @@
                 "type": "options",
                 "defaultValue": "yellow",
                 "content": [
-                    { "value": "blue_teal", "label": "Blue teal" },
-                    { "value": "blue_yellow", "label": "Blue and yellow" },
-                    { "value": "green", "label": "Green" },
-                    { "value": "pink", "label": "Pink" },
-                    { "value": "purple_green", "label": "Purple and green" },
-                    { "value": "red", "label": "Red" },
-                    { "value": "yellow", "label": "Yellow" }
+                    {
+                        "value": "blue_teal",
+                        "label": "Blue teal"
+                    },
+                    {
+                        "value": "blue_yellow",
+                        "label": "Blue and yellow"
+                    },
+                    {
+                        "value": "green",
+                        "label": "Green"
+                    },
+                    {
+                        "value": "pink",
+                        "label": "Pink"
+                    },
+                    {
+                        "value": "purple_green",
+                        "label": "Purple and green"
+                    },
+                    {
+                        "value": "red",
+                        "label": "Red"
+                    },
+                    {
+                        "value": "yellow",
+                        "label": "Yellow"
+                    }
                 ]
             },
             {
@@ -42,7 +180,10 @@
                 "type": "effect",
                 "id": {
                     "name": "concat",
-                    "arguments": ["dancing_lights.", "$color"]
+                    "arguments": [
+                        "dancing_lights.",
+                        "$color"
+                    ]
                 },
                 "duration": -1,
                 "metadata": {
@@ -224,7 +365,10 @@
                     "source": "$targets[0].position",
                     "size": {
                         "name": "sum",
-                        "arguments": ["$radius", "$targets[0].size"]
+                        "arguments": [
+                            "$radius",
+                            "$targets[0].size"
+                        ]
                     }
                 }
             }
@@ -288,7 +432,10 @@
                     "source": "$targets[0].position",
                     "rotation": {
                         "name": "rotation",
-                        "arguments": ["$targets[0].position", "$targets[1].position"]
+                        "arguments": [
+                            "$targets[0].position",
+                            "$targets[1].position"
+                        ]
                     },
                     "size": "$length"
                 }
@@ -305,6 +452,7 @@
             {
                 "type": "effect",
                 "id": "cure_wounds",
+                "sound": "cure_wounds.mp3",
                 "effectProperties": {
                     "source": "$targets[0].position",
                     "size": "$targets[0].size"
@@ -326,8 +474,14 @@
                 "type": "options",
                 "defaultValue": "circle",
                 "content": [
-                    { "value": "circle", "label": "Circle" },
-                    { "value": "cone", "label": "Cone" }
+                    {
+                        "value": "circle",
+                        "label": "Circle"
+                    },
+                    {
+                        "value": "cone",
+                        "label": "Cone"
+                    }
                 ]
             },
             {
@@ -345,7 +499,10 @@
                 "type": "effect",
                 "id": {
                     "name": "concat",
-                    "arguments": ["detect_magic.", "$aoe_type"]
+                    "arguments": [
+                        "detect_magic.",
+                        "$aoe_type"
+                    ]
                 },
                 "duration": -1,
                 "attachedTo": "$targets[0].id",
@@ -500,7 +657,10 @@
                     "source": "$targets[0].position",
                     "size": {
                         "name": "product",
-                        "arguments": ["$targets[0].size", 2]
+                        "arguments": [
+                            "$targets[0].size",
+                            2
+                        ]
                     }
                 }
             },
@@ -546,7 +706,10 @@
                     "source": "$targets[0].position",
                     "size": {
                         "name": "product",
-                        "arguments": ["$targets[0].size", 0.5]
+                        "arguments": [
+                            "$targets[0].size",
+                            0.5
+                        ]
                     }
                 }
             }
@@ -625,7 +788,10 @@
                     "source": "$targets[0].position",
                     "size": {
                         "name": "product",
-                        "arguments": [1.5, "$targets[0].size"]
+                        "arguments": [
+                            1.5,
+                            "$targets[0].size"
+                        ]
                     }
                 }
             },
@@ -640,7 +806,10 @@
                     "source": "$targets[0].position",
                     "size": {
                         "name": "product",
-                        "arguments": [1.5, "$targets[0].size"]
+                        "arguments": [
+                            1.5,
+                            "$targets[0].size"
+                        ]
                     }
                 }
             }
@@ -701,8 +870,14 @@
                 "type": "options",
                 "defaultValue": "dark_pink",
                 "content": [
-                    { "value": "dark_pink", "label": "Dark Pink" },
-                    { "value": "regular_pink", "label": "Regular Pink" }
+                    {
+                        "value": "dark_pink",
+                        "label": "Dark Pink"
+                    },
+                    {
+                        "value": "regular_pink",
+                        "label": "Regular Pink"
+                    }
                 ]
             }
         ],
@@ -711,7 +886,10 @@
                 "type": "effect",
                 "id": {
                     "name": "concat",
-                    "arguments": ["sleep.symbol.", "$color"]
+                    "arguments": [
+                        "sleep.symbol.",
+                        "$color"
+                    ]
                 },
                 "duration": -1,
                 "attachedTo": "$targets[0].id",
@@ -760,12 +938,30 @@
                 "type": "options",
                 "defaultValue": "light_blue",
                 "content": [
-                    { "value": "light_blue", "label": "Light Blue" },
-                    { "value": "light_green", "label": "Light Green" },
-                    { "value": "light_purple", "label": "Light Purple" },
-                    { "value": "light_red", "label": "Light Red" },
-                    { "value": "light_yellow", "label": "Light Yellow" },
-                    { "value": "light_orange", "label": "Light Orange" }
+                    {
+                        "value": "light_blue",
+                        "label": "Light Blue"
+                    },
+                    {
+                        "value": "light_green",
+                        "label": "Light Green"
+                    },
+                    {
+                        "value": "light_purple",
+                        "label": "Light Purple"
+                    },
+                    {
+                        "value": "light_red",
+                        "label": "Light Red"
+                    },
+                    {
+                        "value": "light_yellow",
+                        "label": "Light Yellow"
+                    },
+                    {
+                        "value": "light_orange",
+                        "label": "Light Orange"
+                    }
                 ]
             },
             {
@@ -783,7 +979,10 @@
                 "type": "effect",
                 "id": {
                     "name": "concat",
-                    "arguments": ["cloud_of_daggers.", "$color"]
+                    "arguments": [
+                        "cloud_of_daggers.",
+                        "$color"
+                    ]
                 },
                 "duration": -1,
                 "disableHit": true,
@@ -822,11 +1021,19 @@
                 "type": "effect",
                 "id": {
                     "name": "if",
-                    "arguments": ["$transparent", "darkness.black.transparent", "darkness.black.opaque"]
+                    "arguments": [
+                        "$transparent",
+                        "darkness.black.transparent",
+                        "darkness.black.opaque"
+                    ]
                 },
                 "layer": {
                     "name": "if",
-                    "arguments": ["$transparent", null, "FOG"]
+                    "arguments": [
+                        "$transparent",
+                        null,
+                        "FOG"
+                    ]
                 },
                 "duration": -1,
                 "disableHit": true,
@@ -850,15 +1057,42 @@
                 "type": "options",
                 "defaultValue": "orange.2",
                 "content": [
-                    { "value": "blue", "label": "Blue" },
-                    { "value": "green", "label": "Green" },
-                    { "value": "orange.1", "label": "Orange" },
-                    { "value": "orange.2", "label": "Fire" },
-                    { "value": "pink", "label": "Pink" },
-                    { "value": "purple", "label": "Purple" },
-                    { "value": "red", "label": "Red" },
-                    { "value": "green_to_blue", "label": "Green to blue" },
-                    { "value": "rainbow", "label": "Rainbow" }
+                    {
+                        "value": "blue",
+                        "label": "Blue"
+                    },
+                    {
+                        "value": "green",
+                        "label": "Green"
+                    },
+                    {
+                        "value": "orange.1",
+                        "label": "Orange"
+                    },
+                    {
+                        "value": "orange.2",
+                        "label": "Fire"
+                    },
+                    {
+                        "value": "pink",
+                        "label": "Pink"
+                    },
+                    {
+                        "value": "purple",
+                        "label": "Purple"
+                    },
+                    {
+                        "value": "red",
+                        "label": "Red"
+                    },
+                    {
+                        "value": "green_to_blue",
+                        "label": "Green to blue"
+                    },
+                    {
+                        "value": "rainbow",
+                        "label": "Rainbow"
+                    }
                 ]
             },
             {
@@ -886,7 +1120,11 @@
                         "flaming_sphere.",
                         {
                             "name": "if",
-                            "arguments": ["$transparent", "transparent.", "opaque."]
+                            "arguments": [
+                                "$transparent",
+                                "transparent.",
+                                "opaque."
+                            ]
                         },
                         "$color"
                     ]
@@ -922,7 +1160,9 @@
                 "id": "hide",
                 "delay": 1000,
                 "for": "GM",
-                "arguments": ["$targets[0].id"]
+                "arguments": [
+                    "$targets[0].id"
+                ]
             },
             {
                 "type": "effect",
@@ -938,14 +1178,19 @@
                 "id": "move",
                 "delay": 1500,
                 "for": "GM",
-                "arguments": ["$targets[0].id", "$targets[1].position"]
+                "arguments": [
+                    "$targets[0].id",
+                    "$targets[1].position"
+                ]
             },
             {
                 "type": "action",
                 "id": "show",
                 "delay": 3000,
                 "for": "GM",
-                "arguments": ["$targets[0].id"]
+                "arguments": [
+                    "$targets[0].id"
+                ]
             }
         ]
     },
@@ -978,7 +1223,10 @@
                     "source": "$targets[0].position",
                     "rotation": {
                         "name": "rotation",
-                        "arguments": ["$targets[0].position", "$targets[1].position"]
+                        "arguments": [
+                            "$targets[0].position",
+                            "$targets[1].position"
+                        ]
                     },
                     "size": "$length"
                 }
@@ -998,8 +1246,14 @@
                 "type": "options",
                 "defaultValue": "blue",
                 "content": [
-                    { "value": "blue", "label": "Blue" },
-                    { "value": "red", "label": "Red" }
+                    {
+                        "value": "blue",
+                        "label": "Blue"
+                    },
+                    {
+                        "value": "red",
+                        "label": "Red"
+                    }
                 ]
             }
         ],
@@ -1008,14 +1262,21 @@
                 "type": "effect",
                 "id": {
                     "name": "concat",
-                    "arguments": ["generic.marker.simple.", "$color", ".complete"]
+                    "arguments": [
+                        "generic.marker.simple.",
+                        "$color",
+                        ".complete"
+                    ]
                 },
                 "layer": "PROP",
                 "effectProperties": {
                     "source": "$targets[0].position",
                     "size": {
                         "name": "product",
-                        "arguments": ["$targets[0].size", 2]
+                        "arguments": [
+                            "$targets[0].size",
+                            2
+                        ]
                     }
                 }
             },
@@ -1026,7 +1287,10 @@
                     "arguments": [
                         {
                             "name": "equals",
-                            "arguments": ["$color", "blue"]
+                            "arguments": [
+                                "$color",
+                                "blue"
+                            ]
                         },
                         "generic.marker.spectral_chain.loop",
                         "generic.marker.red_chain.loop"
@@ -1038,7 +1302,10 @@
                     "source": "$targets[0].position",
                     "size": {
                         "name": "product",
-                        "arguments": ["$targets[0].size", 1.5]
+                        "arguments": [
+                            "$targets[0].size",
+                            1.5
+                        ]
                     }
                 }
             }
@@ -1170,38 +1437,134 @@
                 "type": "options",
                 "defaultValue": "spectral_green_greataxe",
                 "content": [
-                    { "value": "spectral_green_club", "label": "Spectral Green Club" },
-                    { "value": "spectral_green_dagger", "label": "Spectral Green Dagger" },
-                    { "value": "spectral_green_falchion", "label": "Spectral Green Falchion" },
-                    { "value": "spectral_green_glaive", "label": "Spectral Green Glaive" },
-                    { "value": "spectral_green_greataxe", "label": "Spectral Green Greataxe" },
-                    { "value": "spectral_green_greatclub", "label": "Spectral Green Greatclub" },
-                    { "value": "spectral_green_greatsword", "label": "Spectral Green Greatsword" },
-                    { "value": "spectral_green_halberd", "label": "Spectral Green Halberd" },
-                    { "value": "spectral_green_hammer1", "label": "Spectral Green Hammer (1)" },
-                    { "value": "spectral_green_hammer2", "label": "Spectral Green Hammer (2)" },
-                    { "value": "spectral_green_handaxe", "label": "Spectral Green Handaxe" },
-                    { "value": "spectral_green_javelin", "label": "Spectral Green Javelin" },
-                    { "value": "spectral_green_katana", "label": "Spectral Green Katana" },
-                    { "value": "regular_blue_laserspear", "label": "Regular Blue Laserspear" },
-                    { "value": "regular_blue_lasersword1", "label": "Regular Blue Lasersword1" },
-                    { "value": "regular_blue_lasersword2", "label": "Regular Blue Lasersword2" },
-                    { "value": "spectral_green_longsword", "label": "Spectral Green Longsword" },
-                    { "value": "flaming_yellow_mace", "label": "Flaming Yellow Mace" },
-                    { "value": "spectral_blue_mace", "label": "Spectral Blue Mace" },
-                    { "value": "spectral_green_mace", "label": "Spectral Green Mace" },
-                    { "value": "flaming_yellow_maul", "label": "Flaming Yellow Maul" },
-                    { "value": "spectral_blue_maul", "label": "Spectral Blue Maul" },
-                    { "value": "spectral_green_maul", "label": "Spectral Green Maul" },
-                    { "value": "spectral_green_quarterstaff", "label": "Spectral Green Quarterstaff" },
-                    { "value": "spectral_green_rapier", "label": "Spectral Green Rapier" },
-                    { "value": "spectral_green_scimitar", "label": "Spectral Green Scimitar" },
-                    { "value": "spectral_green_scythe", "label": "Spectral Green Scythe" },
-                    { "value": "spectral_green_shortsword", "label": "Spectral Green Shortsword" },
-                    { "value": "spectral_green_spear", "label": "Spectral Green Spear" },
-                    { "value": "spectral_green_trident", "label": "Spectral Green Trident" },
-                    { "value": "spectral_green_warhammer", "label": "Spectral Green Warhammer" },
-                    { "value": "spectral_green_wrench", "label": "Spectral Green Wrench" }
+                    {
+                        "value": "spectral_green_club",
+                        "label": "Spectral Green Club"
+                    },
+                    {
+                        "value": "spectral_green_dagger",
+                        "label": "Spectral Green Dagger"
+                    },
+                    {
+                        "value": "spectral_green_falchion",
+                        "label": "Spectral Green Falchion"
+                    },
+                    {
+                        "value": "spectral_green_glaive",
+                        "label": "Spectral Green Glaive"
+                    },
+                    {
+                        "value": "spectral_green_greataxe",
+                        "label": "Spectral Green Greataxe"
+                    },
+                    {
+                        "value": "spectral_green_greatclub",
+                        "label": "Spectral Green Greatclub"
+                    },
+                    {
+                        "value": "spectral_green_greatsword",
+                        "label": "Spectral Green Greatsword"
+                    },
+                    {
+                        "value": "spectral_green_halberd",
+                        "label": "Spectral Green Halberd"
+                    },
+                    {
+                        "value": "spectral_green_hammer1",
+                        "label": "Spectral Green Hammer (1)"
+                    },
+                    {
+                        "value": "spectral_green_hammer2",
+                        "label": "Spectral Green Hammer (2)"
+                    },
+                    {
+                        "value": "spectral_green_handaxe",
+                        "label": "Spectral Green Handaxe"
+                    },
+                    {
+                        "value": "spectral_green_javelin",
+                        "label": "Spectral Green Javelin"
+                    },
+                    {
+                        "value": "spectral_green_katana",
+                        "label": "Spectral Green Katana"
+                    },
+                    {
+                        "value": "regular_blue_laserspear",
+                        "label": "Regular Blue Laserspear"
+                    },
+                    {
+                        "value": "regular_blue_lasersword1",
+                        "label": "Regular Blue Lasersword1"
+                    },
+                    {
+                        "value": "regular_blue_lasersword2",
+                        "label": "Regular Blue Lasersword2"
+                    },
+                    {
+                        "value": "spectral_green_longsword",
+                        "label": "Spectral Green Longsword"
+                    },
+                    {
+                        "value": "flaming_yellow_mace",
+                        "label": "Flaming Yellow Mace"
+                    },
+                    {
+                        "value": "spectral_blue_mace",
+                        "label": "Spectral Blue Mace"
+                    },
+                    {
+                        "value": "spectral_green_mace",
+                        "label": "Spectral Green Mace"
+                    },
+                    {
+                        "value": "flaming_yellow_maul",
+                        "label": "Flaming Yellow Maul"
+                    },
+                    {
+                        "value": "spectral_blue_maul",
+                        "label": "Spectral Blue Maul"
+                    },
+                    {
+                        "value": "spectral_green_maul",
+                        "label": "Spectral Green Maul"
+                    },
+                    {
+                        "value": "spectral_green_quarterstaff",
+                        "label": "Spectral Green Quarterstaff"
+                    },
+                    {
+                        "value": "spectral_green_rapier",
+                        "label": "Spectral Green Rapier"
+                    },
+                    {
+                        "value": "spectral_green_scimitar",
+                        "label": "Spectral Green Scimitar"
+                    },
+                    {
+                        "value": "spectral_green_scythe",
+                        "label": "Spectral Green Scythe"
+                    },
+                    {
+                        "value": "spectral_green_shortsword",
+                        "label": "Spectral Green Shortsword"
+                    },
+                    {
+                        "value": "spectral_green_spear",
+                        "label": "Spectral Green Spear"
+                    },
+                    {
+                        "value": "spectral_green_trident",
+                        "label": "Spectral Green Trident"
+                    },
+                    {
+                        "value": "spectral_green_warhammer",
+                        "label": "Spectral Green Warhammer"
+                    },
+                    {
+                        "value": "spectral_green_wrench",
+                        "label": "Spectral Green Wrench"
+                    }
                 ]
             },
             {
@@ -1219,7 +1582,10 @@
                 "type": "effect",
                 "id": {
                     "name": "concat",
-                    "arguments": ["spiritual_weapon.", "$weapon_variant"]
+                    "arguments": [
+                        "spiritual_weapon.",
+                        "$weapon_variant"
+                    ]
                 },
                 "duration": -1,
                 "effectProperties": {
@@ -1242,8 +1608,14 @@
                 "type": "options",
                 "defaultValue": "simple",
                 "content": [
-                    { "value": "simple", "label": "Simple" },
-                    { "value": "spiders", "label": "Spiders" }
+                    {
+                        "value": "simple",
+                        "label": "Simple"
+                    },
+                    {
+                        "value": "spiders",
+                        "label": "Spiders"
+                    }
                 ]
             },
             {
@@ -1271,7 +1643,11 @@
                         "web.",
                         {
                             "name": "if",
-                            "arguments": ["$transparent", "transparent.", "opaque."]
+                            "arguments": [
+                                "$transparent",
+                                "transparent.",
+                                "opaque."
+                            ]
                         },
                         "$mode"
                     ]
@@ -1297,13 +1673,34 @@
                 "type": "options",
                 "defaultValue": "blue",
                 "content": [
-                    { "value": "blue", "label": "Blue" },
-                    { "value": "blue_orange", "label": "Blue and orange" },
-                    { "value": "green", "label": "Green" },
-                    { "value": "pink_yellow", "label": "Pink and yellow" },
-                    { "value": "purple", "label": "Purple" },
-                    { "value": "red", "label": "Red" },
-                    { "value": "yellow", "label": "Yellow" }
+                    {
+                        "value": "blue",
+                        "label": "Blue"
+                    },
+                    {
+                        "value": "blue_orange",
+                        "label": "Blue and orange"
+                    },
+                    {
+                        "value": "green",
+                        "label": "Green"
+                    },
+                    {
+                        "value": "pink_yellow",
+                        "label": "Pink and yellow"
+                    },
+                    {
+                        "value": "purple",
+                        "label": "Purple"
+                    },
+                    {
+                        "value": "red",
+                        "label": "Red"
+                    },
+                    {
+                        "value": "yellow",
+                        "label": "Yellow"
+                    }
                 ]
             },
             {
@@ -1331,7 +1728,11 @@
                         "call_lightning.",
                         {
                             "name": "if",
-                            "arguments": ["$transparent", "transparent.", "opaque."]
+                            "arguments": [
+                                "$transparent",
+                                "transparent.",
+                                "opaque."
+                            ]
                         },
                         "$color"
                     ]
@@ -1367,7 +1768,10 @@
                 "id": "fireball.beam",
                 "disabled": {
                     "name": "lesser_than",
-                    "arguments": ["$targets.length", 2]
+                    "arguments": [
+                        "$targets.length",
+                        2
+                    ]
                 },
                 "effectProperties": {
                     "source": "$targets[0].position",
@@ -1383,7 +1787,10 @@
                     "arguments": [
                         {
                             "name": "lesser_than",
-                            "arguments": ["$targets.length", 2]
+                            "arguments": [
+                                "$targets.length",
+                                2
+                            ]
                         },
                         null,
                         3000
@@ -1395,7 +1802,10 @@
                         "arguments": [
                             {
                                 "name": "lesser_than",
-                                "arguments": ["$targets.length", 2]
+                                "arguments": [
+                                    "$targets.length",
+                                    2
+                                ]
                             },
                             "$targets[0].position",
                             "$targets[1].position"
@@ -1434,7 +1844,10 @@
                     "source": "$targets[0].position",
                     "rotation": {
                         "name": "rotation",
-                        "arguments": ["$targets[0].position", "$targets[1].position"]
+                        "arguments": [
+                            "$targets[0].position",
+                            "$targets[1].position"
+                        ]
                     },
                     "size": "$length"
                 }
@@ -1461,7 +1874,11 @@
                 "type": "effect",
                 "id": {
                     "name": "if",
-                    "arguments": ["$transparent", "wind_wall.transparent", "wind_wall.opaque"]
+                    "arguments": [
+                        "$transparent",
+                        "wind_wall.transparent",
+                        "wind_wall.opaque"
+                    ]
                 },
                 "duration": -1,
                 "disableHit": true,
@@ -1486,8 +1903,14 @@
                 "type": "options",
                 "defaultValue": "1",
                 "content": [
-                    { "value": "1", "label": "Mode #1" },
-                    { "value": "2", "label": "Mode #2" }
+                    {
+                        "value": "1",
+                        "label": "Mode #1"
+                    },
+                    {
+                        "value": "2",
+                        "label": "Mode #2"
+                    }
                 ]
             },
             {
@@ -1515,7 +1938,11 @@
                         "sleet_storm.",
                         {
                             "name": "if",
-                            "arguments": ["$transparent", "transparent", "opaque"]
+                            "arguments": [
+                                "$transparent",
+                                "transparent",
+                                "opaque"
+                            ]
                         },
                         {
                             "name": "if",
@@ -1523,7 +1950,10 @@
                                 "$transparent",
                                 {
                                     "name": "concat",
-                                    "arguments": [".", "$mode"]
+                                    "arguments": [
+                                        ".",
+                                        "$mode"
+                                    ]
                                 },
                                 ""
                             ]
@@ -1567,7 +1997,10 @@
                     "source": "$targets[0].position",
                     "size": {
                         "name": "sum",
-                        "arguments": ["$radius", "$targets[0].size"]
+                        "arguments": [
+                            "$radius",
+                            "$targets[0].size"
+                        ]
                     }
                 }
             }
@@ -1599,7 +2032,9 @@
                 "id": "misty_step.out",
                 "disabled": {
                     "name": "target_not_in_range",
-                    "arguments": [0]
+                    "arguments": [
+                        0
+                    ]
                 },
                 "effectProperties": {
                     "size": "$targets[0].size",
@@ -1612,7 +2047,9 @@
                 "delay": 900,
                 "disabled": {
                     "name": "target_not_in_range",
-                    "arguments": [0]
+                    "arguments": [
+                        0
+                    ]
                 },
                 "effectProperties": {
                     "size": "$radius",
@@ -1626,9 +2063,14 @@
                 "for": "CASTER",
                 "disabled": {
                     "name": "target_not_in_range",
-                    "arguments": [0, -2]
+                    "arguments": [
+                        0,
+                        -2
+                    ]
                 },
-                "arguments": ["$targets[0].id"]
+                "arguments": [
+                    "$targets[0].id"
+                ]
             },
             {
                 "type": "action",
@@ -1637,9 +2079,15 @@
                 "for": "CASTER",
                 "disabled": {
                     "name": "target_not_in_range",
-                    "arguments": [0, -2]
+                    "arguments": [
+                        0,
+                        -2
+                    ]
                 },
-                "arguments": ["$targets[0].id", "$globalTargets[-1].position"]
+                "arguments": [
+                    "$targets[0].id",
+                    "$globalTargets[-1].position"
+                ]
             },
             {
                 "type": "action",
@@ -1648,7 +2096,10 @@
                 "for": "CASTER",
                 "disabled": {
                     "name": "target_not_in_range",
-                    "arguments": [1, -2]
+                    "arguments": [
+                        1,
+                        -2
+                    ]
                 },
                 "arguments": [
                     "$targets[0].id",
@@ -1658,7 +2109,10 @@
                             "$globalTargets[-1].position",
                             {
                                 "name": "subtract",
-                                "arguments": ["$targets[0].position", "$globalTargets[0].position"]
+                                "arguments": [
+                                    "$targets[0].position",
+                                    "$globalTargets[0].position"
+                                ]
                             }
                         ]
                     }
@@ -1671,9 +2125,14 @@
                 "for": "CASTER",
                 "disabled": {
                     "name": "target_not_in_range",
-                    "arguments": [0, -2]
+                    "arguments": [
+                        0,
+                        -2
+                    ]
                 },
-                "arguments": ["$targets[0].id"]
+                "arguments": [
+                    "$targets[0].id"
+                ]
             },
             {
                 "type": "effect",
@@ -1681,7 +2140,10 @@
                 "delay": 1000,
                 "disabled": {
                     "name": "target_in_range",
-                    "arguments": [0, -2]
+                    "arguments": [
+                        0,
+                        -2
+                    ]
                 },
                 "effectProperties": {
                     "size": "$globalTargets[0].size",
@@ -1715,7 +2177,10 @@
                 "effectProperties": {
                     "size": {
                         "name": "product",
-                        "arguments": ["$targets[1].size", 2.5]
+                        "arguments": [
+                            "$targets[1].size",
+                            2.5
+                        ]
                     },
                     "source": "$targets[1].position"
                 }
@@ -1725,21 +2190,37 @@
                 "id": "stretch",
                 "delay": 250,
                 "for": "CASTER",
-                "arguments": ["$targets[1].id", {"x": 0.01, "y": 0.01}, 300, "EASE_IN"]
+                "arguments": [
+                    "$targets[1].id",
+                    {
+                        "x": 0.01,
+                        "y": 0.01
+                    },
+                    300,
+                    "EASE_IN"
+                ]
             },
             {
                 "type": "action",
                 "id": "hide",
                 "delay": 1000,
                 "for": "CASTER",
-                "arguments": ["$targets[1].id"]
+                "arguments": [
+                    "$targets[1].id"
+                ]
             },
             {
                 "type": "action",
                 "id": "scale",
                 "delay": 1500,
                 "for": "CASTER",
-                "arguments": ["$targets[1].id", {"x": 100, "y": 100}]
+                "arguments": [
+                    "$targets[1].id",
+                    {
+                        "x": 100,
+                        "y": 100
+                    }
+                ]
             }
         ]
     },
@@ -1789,12 +2270,17 @@
                 "duration": 3000,
                 "disabled": {
                     "name": "target_not_in_range",
-                    "arguments": [0]
+                    "arguments": [
+                        0
+                    ]
                 },
                 "effectProperties": {
                     "size": {
                         "name": "product",
-                        "arguments": ["$globalTargets[0].size", 2.5]
+                        "arguments": [
+                            "$globalTargets[0].size",
+                            2.5
+                        ]
                     },
                     "source": "$globalTargets[0].position"
                 }
@@ -1806,12 +2292,17 @@
                 "duration": 3000,
                 "disabled": {
                     "name": "target_in_range",
-                    "arguments": [0]
+                    "arguments": [
+                        0
+                    ]
                 },
                 "effectProperties": {
                     "size": {
                         "name": "product",
-                        "arguments": ["$globalTargets[0].size", 2.5]
+                        "arguments": [
+                            "$globalTargets[0].size",
+                            2.5
+                        ]
                     },
                     "source": "$globalTargets[-1].position"
                 }
@@ -1823,9 +2314,20 @@
                 "for": "CASTER",
                 "disabled": {
                     "name": "target_not_in_range",
-                    "arguments": [0, -2]
+                    "arguments": [
+                        0,
+                        -2
+                    ]
                 },
-                "arguments": ["$targets[0].id", {"x": 0.01, "y": 0.01}, 300, "EASE_IN"]
+                "arguments": [
+                    "$targets[0].id",
+                    {
+                        "x": 0.01,
+                        "y": 0.01
+                    },
+                    300,
+                    "EASE_IN"
+                ]
             },
             {
                 "type": "action",
@@ -1834,9 +2336,17 @@
                 "for": "CASTER",
                 "disabled": {
                     "name": "target_not_in_range",
-                    "arguments": [1, -2]
+                    "arguments": [
+                        1,
+                        -2
+                    ]
                 },
-                "arguments": ["$targets[0].id", "$globalTargets[0].position", 300, "EASE_IN"]
+                "arguments": [
+                    "$targets[0].id",
+                    "$globalTargets[0].position",
+                    300,
+                    "EASE_IN"
+                ]
             },
             {
                 "type": "action",
@@ -1845,9 +2355,14 @@
                 "for": "CASTER",
                 "disabled": {
                     "name": "target_not_in_range",
-                    "arguments": [0, -2]
+                    "arguments": [
+                        0,
+                        -2
+                    ]
                 },
-                "arguments": ["$targets[0].id"]
+                "arguments": [
+                    "$targets[0].id"
+                ]
             },
             {
                 "type": "action",
@@ -1856,9 +2371,15 @@
                 "for": "CASTER",
                 "disabled": {
                     "name": "target_not_in_range",
-                    "arguments": [0, -2]
+                    "arguments": [
+                        0,
+                        -2
+                    ]
                 },
-                "arguments": ["$targets[0].id", "$globalTargets[-1].position"]
+                "arguments": [
+                    "$targets[0].id",
+                    "$globalTargets[-1].position"
+                ]
             },
             {
                 "type": "action",
@@ -1867,9 +2388,14 @@
                 "for": "CASTER",
                 "disabled": {
                     "name": "target_not_in_range",
-                    "arguments": [0, -2]
+                    "arguments": [
+                        0,
+                        -2
+                    ]
                 },
-                "arguments": ["$targets[0].id"]
+                "arguments": [
+                    "$targets[0].id"
+                ]
             },
             {
                 "type": "action",
@@ -1878,9 +2404,20 @@
                 "for": "CASTER",
                 "disabled": {
                     "name": "target_not_in_range",
-                    "arguments": [0, -2]
+                    "arguments": [
+                        0,
+                        -2
+                    ]
                 },
-                "arguments": ["$targets[0].id", {"x": 100, "y": 100}, 300, "EASE_OUT"]
+                "arguments": [
+                    "$targets[0].id",
+                    {
+                        "x": 100,
+                        "y": 100
+                    },
+                    300,
+                    "EASE_OUT"
+                ]
             },
             {
                 "type": "action",
@@ -1889,7 +2426,10 @@
                 "for": "CASTER",
                 "disabled": {
                     "name": "target_not_in_range",
-                    "arguments": [1, -2]
+                    "arguments": [
+                        1,
+                        -2
+                    ]
                 },
                 "arguments": [
                     "$targets[0].id",
@@ -1899,7 +2439,10 @@
                             "$globalTargets[-1].position",
                             {
                                 "name": "subtract",
-                                "arguments": ["$targets[0].position", "$globalTargets[0].position"]
+                                "arguments": [
+                                    "$targets[0].position",
+                                    "$globalTargets[0].position"
+                                ]
                             }
                         ]
                     },
@@ -1923,8 +2466,14 @@
                 "type": "options",
                 "defaultValue": "yellow",
                 "content": [
-                    { "value": "blue", "label": "Blue" },
-                    { "value": "yellow", "label": "Yellow" }
+                    {
+                        "value": "blue",
+                        "label": "Blue"
+                    },
+                    {
+                        "value": "yellow",
+                        "label": "Yellow"
+                    }
                 ]
             },
             {
@@ -1933,8 +2482,14 @@
                 "type": "options",
                 "defaultValue": "line",
                 "content": [
-                    { "value": "line", "label": "Line" },
-                    { "value": "ring", "label": "Ring" }
+                    {
+                        "value": "line",
+                        "label": "Line"
+                    },
+                    {
+                        "value": "ring",
+                        "label": "Ring"
+                    }
                 ]
             },
             {
@@ -1962,7 +2517,11 @@
                         "wall_of_fire.",
                         {
                             "name": "if",
-                            "arguments": ["$transparent", "transparent", "opaque"]
+                            "arguments": [
+                                "$transparent",
+                                "transparent",
+                                "opaque"
+                            ]
                         },
                         ".line.",
                         "$color"
@@ -1970,7 +2529,10 @@
                 },
                 "disabled": {
                     "name": "equals",
-                    "arguments": ["$mode", "ring"]
+                    "arguments": [
+                        "$mode",
+                        "ring"
+                    ]
                 },
                 "duration": -1,
                 "disableHit": true,
@@ -1988,7 +2550,11 @@
                         "wall_of_fire.",
                         {
                             "name": "if",
-                            "arguments": ["$transparent", "transparent", "opaque"]
+                            "arguments": [
+                                "$transparent",
+                                "transparent",
+                                "opaque"
+                            ]
                         },
                         ".ring.",
                         "$color"
@@ -1996,7 +2562,10 @@
                 },
                 "disabled": {
                     "name": "equals",
-                    "arguments": ["$mode", "line"]
+                    "arguments": [
+                        "$mode",
+                        "line"
+                    ]
                 },
                 "duration": -1,
                 "disableHit": true,
@@ -2036,7 +2605,11 @@
                 "type": "effect",
                 "id": {
                     "name": "if",
-                    "arguments": ["$circle", "antilife_shell.circle", "antilife_shell.no_circle"]
+                    "arguments": [
+                        "$circle",
+                        "antilife_shell.circle",
+                        "antilife_shell.no_circle"
+                    ]
                 },
                 "disableHit": true,
                 "attachedTo": "$targets[0].id",
@@ -2045,7 +2618,10 @@
                     "source": "$targets[0].position",
                     "size": {
                         "name": "sum",
-                        "arguments": ["$radius", "$targets[0].size"]
+                        "arguments": [
+                            "$radius",
+                            "$targets[0].size"
+                        ]
                     }
                 }
             }
@@ -2064,10 +2640,22 @@
                 "type": "options",
                 "defaultValue": "purple",
                 "content": [
-                    { "value": "blue", "label": "Blue" },
-                    { "value": "green", "label": "Green" },
-                    { "value": "purple", "label": "Purple" },
-                    { "value": "red", "label": "Red" }
+                    {
+                        "value": "blue",
+                        "label": "Blue"
+                    },
+                    {
+                        "value": "green",
+                        "label": "Green"
+                    },
+                    {
+                        "value": "purple",
+                        "label": "Purple"
+                    },
+                    {
+                        "value": "red",
+                        "label": "Red"
+                    }
                 ]
             },
             {
@@ -2085,7 +2673,10 @@
                 "type": "effect",
                 "id": {
                     "name": "concat",
-                    "arguments": ["arcane_hand.", "$color"]
+                    "arguments": [
+                        "arcane_hand.",
+                        "$color"
+                    ]
                 },
                 "duration": -1,
                 "effectProperties": {
@@ -2123,7 +2714,10 @@
                     "source": "$targets[0].position",
                     "rotation": {
                         "name": "rotation",
-                        "arguments": ["$targets[0].position", "$targets[1].position"]
+                        "arguments": [
+                            "$targets[0].position",
+                            "$targets[1].position"
+                        ]
                     },
                     "size": "$length"
                 }
@@ -2144,9 +2738,18 @@
                 "type": "options",
                 "defaultValue": "line",
                 "content": [
-                    { "value": "line", "label": "Line" },
-                    { "value": "square", "label": "Square" },
-                    { "value": "ring", "label": "Ring" }
+                    {
+                        "value": "line",
+                        "label": "Line"
+                    },
+                    {
+                        "value": "square",
+                        "label": "Square"
+                    },
+                    {
+                        "value": "ring",
+                        "label": "Ring"
+                    }
                 ]
             },
             {
@@ -2165,7 +2768,10 @@
                 "id": "wall_of_force.line",
                 "disabled": {
                     "name": "not_equals",
-                    "arguments": ["$mode", "line"]
+                    "arguments": [
+                        "$mode",
+                        "line"
+                    ]
                 },
                 "duration": -1,
                 "disableHit": true,
@@ -2186,7 +2792,10 @@
                 },
                 "disabled": {
                     "name": "equals",
-                    "arguments": ["$mode", "line"]
+                    "arguments": [
+                        "$mode",
+                        "line"
+                    ]
                 },
                 "duration": -1,
                 "disableHit": true,
@@ -2211,7 +2820,9 @@
                 "id": "chain_lightning.primary",
                 "disabled": {
                     "name": "target_not_in_range",
-                    "arguments": [1]
+                    "arguments": [
+                        1
+                    ]
                 },
                 "effectProperties": {
                     "source": "$globalTargets[0].position",
@@ -2225,7 +2836,10 @@
                 "delay": 1000,
                 "disabled": {
                     "name": "target_not_in_range",
-                    "arguments": [2, -1]
+                    "arguments": [
+                        2,
+                        -1
+                    ]
                 },
                 "effectProperties": {
                     "source": "$globalTargets[1].position",
@@ -2310,11 +2924,19 @@
                 "type": "effect",
                 "id": {
                     "name": "if",
-                    "arguments": ["$transparent", "darkness.green.transparent", "darkness.green.opaque"]
+                    "arguments": [
+                        "$transparent",
+                        "darkness.green.transparent",
+                        "darkness.green.opaque"
+                    ]
                 },
                 "layer": {
                     "name": "if",
-                    "arguments": ["$transparent", null, "FOG"]
+                    "arguments": [
+                        "$transparent",
+                        null,
+                        "FOG"
+                    ]
                 },
                 "duration": -1,
                 "disableHit": true,
@@ -2340,29 +2962,98 @@
                 "type": "options",
                 "defaultValue": "sword",
                 "content": [
-                    { "value": "club", "label": "Club" },
-                    { "value": "dagger", "label": "Dagger" },
-                    { "value": "falchion", "label": "Falchion" },
-                    { "value": "generic_slash", "label": "Generic Slash" },
-                    { "value": "generic_whirlwind", "label": "Generic Whirlwind" },
-                    { "value": "glaive", "label": "Glaive" },
-                    { "value": "great_axe", "label": "Greataxe" },
-                    { "value": "great_club", "label": "Greatclub" },
-                    { "value": "great_sword", "label": "Greatsword" },
-                    { "value": "halberd", "label": "Halberd" },
-                    { "value": "hammer", "label": "Hammer" },
-                    { "value": "hand_axe", "label": "Handaxe" },
-                    { "value": "laser_sword", "label": "Laser Sword" },
-                    { "value": "mace", "label": "Mace" },
-                    { "value": "maul", "label": "Maul" },
-                    { "value": "quarterstaff", "label": "Quarterstaff" },
-                    { "value": "rapier", "label": "Rapier" },
-                    { "value": "scimitar", "label": "Scimitar" },
-                    { "value": "shortsword", "label": "Shortsword" },
-                    { "value": "spear", "label": "Spear" },
-                    { "value": "sword", "label": "Sword" },
-                    { "value": "warhammer", "label": "Warhammer" },
-                    { "value": "wrench", "label": "Wrench" }
+                    {
+                        "value": "club",
+                        "label": "Club"
+                    },
+                    {
+                        "value": "dagger",
+                        "label": "Dagger"
+                    },
+                    {
+                        "value": "falchion",
+                        "label": "Falchion"
+                    },
+                    {
+                        "value": "generic_slash",
+                        "label": "Generic Slash"
+                    },
+                    {
+                        "value": "generic_whirlwind",
+                        "label": "Generic Whirlwind"
+                    },
+                    {
+                        "value": "glaive",
+                        "label": "Glaive"
+                    },
+                    {
+                        "value": "great_axe",
+                        "label": "Greataxe"
+                    },
+                    {
+                        "value": "great_club",
+                        "label": "Greatclub"
+                    },
+                    {
+                        "value": "great_sword",
+                        "label": "Greatsword"
+                    },
+                    {
+                        "value": "halberd",
+                        "label": "Halberd"
+                    },
+                    {
+                        "value": "hammer",
+                        "label": "Hammer"
+                    },
+                    {
+                        "value": "hand_axe",
+                        "label": "Handaxe"
+                    },
+                    {
+                        "value": "laser_sword",
+                        "label": "Laser Sword"
+                    },
+                    {
+                        "value": "mace",
+                        "label": "Mace"
+                    },
+                    {
+                        "value": "maul",
+                        "label": "Maul"
+                    },
+                    {
+                        "value": "quarterstaff",
+                        "label": "Quarterstaff"
+                    },
+                    {
+                        "value": "rapier",
+                        "label": "Rapier"
+                    },
+                    {
+                        "value": "scimitar",
+                        "label": "Scimitar"
+                    },
+                    {
+                        "value": "shortsword",
+                        "label": "Shortsword"
+                    },
+                    {
+                        "value": "spear",
+                        "label": "Spear"
+                    },
+                    {
+                        "value": "sword",
+                        "label": "Sword"
+                    },
+                    {
+                        "value": "warhammer",
+                        "label": "Warhammer"
+                    },
+                    {
+                        "value": "wrench",
+                        "label": "Wrench"
+                    }
                 ]
             }
         ],
@@ -2371,28 +3062,43 @@
                 "type": "effect",
                 "id": {
                     "name": "concat",
-                    "arguments": ["generic.weapon_attacks.melee.single.", "$weapon_variant"]
+                    "arguments": [
+                        "generic.weapon_attacks.melee.single.",
+                        "$weapon_variant"
+                    ]
                 },
                 "forceVariant": {
                     "name": "random_int",
-                    "arguments": [0, 6]
+                    "arguments": [
+                        0,
+                        6
+                    ]
                 },
                 "effectProperties": {
                     "source": "$targets[0].position",
                     "size": {
                         "name": "product",
-                        "arguments": ["$targets[0].size", 2]
+                        "arguments": [
+                            "$targets[0].size",
+                            2
+                        ]
                     },
                     "rotation": {
                         "name": "if",
                         "arguments": [
                             {
                                 "name": "greater_than",
-                                "arguments": ["$targets.length", 1]
+                                "arguments": [
+                                    "$targets.length",
+                                    1
+                                ]
                             },
                             {
                                 "name": "rotation",
-                                "arguments": ["$targets[0].position", "$targets[1].position"]
+                                "arguments": [
+                                    "$targets[0].position",
+                                    "$targets[1].position"
+                                ]
                             },
                             0
                         ]
@@ -2414,34 +3120,118 @@
                 "type": "options",
                 "defaultValue": "arrow.white",
                 "content": [
-                    { "value": "arrow.green", "label": "綠色箭矢" },
-                    { "value": "arrow.white", "label": "白色箭矢" },
-                    { "value": "arrow.blue", "label": "藍色箭矢" },
-                    { "value": "bolt", "label": "弩箭" },
-                    { "value": "boulder_toss", "label": "投擲巨石" },
-                    { "value": "bullet.orange", "label": "橘色子彈" },
-                    { "value": "bullet.large_orange", "label": "大型橘色子彈" },
-                    { "value": "bullet.blue", "label": "藍色子彈" },
-                    { "value": "dagger.throw", "label": "投擲匕首" },
-                    { "value": "laser_shot.blue", "label": "藍色雷射" },
-                    { "value": "laser_shot.green", "label": "綠色雷射" },
-                    { "value": "laser_shot.orange", "label": "橘色雷射" },
-                    { "value": "laser_shot.red", "label": "紅色雷射" },
-                    { "value": "laser_sword.blue", "label": "藍色光劍" },
-                    { "value": "laser_sword.red", "label": "紅色光劍" },
-                    { "value": "cannon_ball", "label": "加農砲彈" },
-                    { "value": "barrel_toss.metal", "label": "金屬鐵桶" },
-                    { "value": "barrel_toss.wooden", "label": "木製木桶" },
-                    { "value": "missile.blue", "label": "藍色飛彈" },
-                    { "value": "missile.white", "label": "白色飛彈" },
-                    { "value": "missile.wide_white", "label": "寬版白色飛彈" },
-                    { "value": "missile.purple_pink", "label": "紫粉色飛彈" },
-                    { "value": "shield.throw", "label": "投擲盾牌" },
-                    { "value": "shield.complete", "label": "盾牌 (迴旋)" },
-                    { "value": "snipe", "label": "狙擊射擊" },
-                    { "value": "snowball", "label": "雪球" },
-                    { "value": "throw.bomb", "label": "投擲炸彈" },
-                    { "value": "throw.flask", "label": "投擲燒瓶" }
+                    {
+                        "value": "arrow.green",
+                        "label": "綠色箭矢"
+                    },
+                    {
+                        "value": "arrow.white",
+                        "label": "白色箭矢"
+                    },
+                    {
+                        "value": "arrow.blue",
+                        "label": "藍色箭矢"
+                    },
+                    {
+                        "value": "bolt",
+                        "label": "弩箭"
+                    },
+                    {
+                        "value": "boulder_toss",
+                        "label": "投擲巨石"
+                    },
+                    {
+                        "value": "bullet.orange",
+                        "label": "橘色子彈"
+                    },
+                    {
+                        "value": "bullet.large_orange",
+                        "label": "大型橘色子彈"
+                    },
+                    {
+                        "value": "bullet.blue",
+                        "label": "藍色子彈"
+                    },
+                    {
+                        "value": "dagger.throw",
+                        "label": "投擲匕首"
+                    },
+                    {
+                        "value": "laser_shot.blue",
+                        "label": "藍色雷射"
+                    },
+                    {
+                        "value": "laser_shot.green",
+                        "label": "綠色雷射"
+                    },
+                    {
+                        "value": "laser_shot.orange",
+                        "label": "橘色雷射"
+                    },
+                    {
+                        "value": "laser_shot.red",
+                        "label": "紅色雷射"
+                    },
+                    {
+                        "value": "laser_sword.blue",
+                        "label": "藍色光劍"
+                    },
+                    {
+                        "value": "laser_sword.red",
+                        "label": "紅色光劍"
+                    },
+                    {
+                        "value": "cannon_ball",
+                        "label": "加農砲彈"
+                    },
+                    {
+                        "value": "barrel_toss.metal",
+                        "label": "金屬鐵桶"
+                    },
+                    {
+                        "value": "barrel_toss.wooden",
+                        "label": "木製木桶"
+                    },
+                    {
+                        "value": "missile.blue",
+                        "label": "藍色飛彈"
+                    },
+                    {
+                        "value": "missile.white",
+                        "label": "白色飛彈"
+                    },
+                    {
+                        "value": "missile.wide_white",
+                        "label": "寬版白色飛彈"
+                    },
+                    {
+                        "value": "missile.purple_pink",
+                        "label": "紫粉色飛彈"
+                    },
+                    {
+                        "value": "shield.throw",
+                        "label": "投擲盾牌"
+                    },
+                    {
+                        "value": "shield.complete",
+                        "label": "盾牌 (迴旋)"
+                    },
+                    {
+                        "value": "snipe",
+                        "label": "狙擊射擊"
+                    },
+                    {
+                        "value": "snowball",
+                        "label": "雪球"
+                    },
+                    {
+                        "value": "throw.bomb",
+                        "label": "投擲炸彈"
+                    },
+                    {
+                        "value": "throw.flask",
+                        "label": "投擲燒瓶"
+                    }
                 ]
             },
             {
@@ -2450,18 +3240,54 @@
                 "type": "options",
                 "defaultValue": "throw.mp3",
                 "content": [
-                    { "value": "arrow.mp3", "label": "弓箭射擊" },
-                    { "value": "throw.mp3", "label": "投擲破空" },
-                    { "value": "gunshot.mp3", "label": "槍砲射擊" },
-                    { "value": "laser.mp3", "label": "雷射光束" },
-                    { "value": "boulder.mp3", "label": "沉重巨石" },
-                    { "value": "bomb.mp3", "label": "炸彈爆炸" },
-                    { "value": "magic_missile.mp3", "label": "魔法飛彈" },
-                    { "value": "glass_shatter.mp3", "label": "玻璃碎裂" },
-                    { "value": "wood_break.mp3", "label": "木製破裂" },
-                    { "value": "crossbow.mp3", "label": "弩射擊" },
-                    { "value": "dagger.mp3", "label": "匕首投擲" },
-                    { "value": "none", "label": "無音效" }
+                    {
+                        "value": "arrow.mp3",
+                        "label": "弓箭射擊"
+                    },
+                    {
+                        "value": "throw.mp3",
+                        "label": "投擲破空"
+                    },
+                    {
+                        "value": "gunshot.mp3",
+                        "label": "槍砲射擊"
+                    },
+                    {
+                        "value": "laser.mp3",
+                        "label": "雷射光束"
+                    },
+                    {
+                        "value": "boulder.mp3",
+                        "label": "沉重巨石"
+                    },
+                    {
+                        "value": "bomb.mp3",
+                        "label": "炸彈爆炸"
+                    },
+                    {
+                        "value": "magic_missile.mp3",
+                        "label": "魔法飛彈"
+                    },
+                    {
+                        "value": "glass_shatter.mp3",
+                        "label": "玻璃碎裂"
+                    },
+                    {
+                        "value": "wood_break.mp3",
+                        "label": "木製破裂"
+                    },
+                    {
+                        "value": "crossbow.mp3",
+                        "label": "弩射擊"
+                    },
+                    {
+                        "value": "dagger.mp3",
+                        "label": "匕首投擲"
+                    },
+                    {
+                        "value": "none",
+                        "label": "無音效"
+                    }
                 ]
             }
         ],
@@ -2470,7 +3296,10 @@
                 "type": "effect",
                 "id": {
                     "name": "concat",
-                    "arguments": ["generic.weapon_attacks.ranged.", "$weapon_variant"]
+                    "arguments": [
+                        "generic.weapon_attacks.ranged.",
+                        "$weapon_variant"
+                    ]
                 },
                 "sound": "$sound_variant",
                 "effectProperties": {
@@ -2482,7 +3311,7 @@
                     {
                         "type": "action",
                         "id": "none",
-                        "delay": 2000, 
+                        "delay": 2000,
                         "sound": {
                             "name": "match",
                             "arguments": [
@@ -2616,18 +3445,25 @@
                     "arguments": [
                         {
                             "name": "not",
-                            "arguments": ["$caster"]
+                            "arguments": [
+                                "$caster"
+                            ]
                         },
                         {
                             "name": "target_not_in_range",
-                            "arguments": [0]
+                            "arguments": [
+                                0
+                            ]
                         }
                     ]
                 },
                 "effectProperties": {
                     "size": {
                         "name": "product",
-                        "arguments": ["$targets[0].size", 2]
+                        "arguments": [
+                            "$targets[0].size",
+                            2
+                        ]
                     },
                     "source": "$targets[0].position"
                 }
@@ -2638,7 +3474,11 @@
                 "zIndex": 5,
                 "delay": {
                     "name": "if",
-                    "arguments": ["$caster", null, 1000]
+                    "arguments": [
+                        "$caster",
+                        null,
+                        1000
+                    ]
                 },
                 "disabled": {
                     "name": "and",
@@ -2646,14 +3486,18 @@
                         "$caster",
                         {
                             "name": "target_in_range",
-                            "arguments": [0]
+                            "arguments": [
+                                0
+                            ]
                         }
                     ]
                 },
                 "effectProperties": {
                     "size": {
                         "name": "token_size",
-                        "arguments": ["$tokens[0]"]
+                        "arguments": [
+                            "$tokens[0]"
+                        ]
                     },
                     "source": "$targets[0].position"
                 }
@@ -2664,7 +3508,11 @@
                 "zIndex": 4,
                 "delay": {
                     "name": "if",
-                    "arguments": ["$caster", 1500, 2500]
+                    "arguments": [
+                        "$caster",
+                        1500,
+                        2500
+                    ]
                 },
                 "disabled": {
                     "name": "and",
@@ -2672,14 +3520,18 @@
                         "$caster",
                         {
                             "name": "target_in_range",
-                            "arguments": [0]
+                            "arguments": [
+                                0
+                            ]
                         }
                     ]
                 },
                 "effectProperties": {
                     "size": {
                         "name": "token_size",
-                        "arguments": ["$tokens[0]"]
+                        "arguments": [
+                            "$tokens[0]"
+                        ]
                     },
                     "source": "$targets[0].position"
                 }
@@ -2690,7 +3542,11 @@
                 "zIndex": 3,
                 "delay": {
                     "name": "if",
-                    "arguments": ["$caster", 2000, 3000]
+                    "arguments": [
+                        "$caster",
+                        2000,
+                        3000
+                    ]
                 },
                 "disabled": {
                     "name": "and",
@@ -2698,14 +3554,18 @@
                         "$caster",
                         {
                             "name": "target_in_range",
-                            "arguments": [0]
+                            "arguments": [
+                                0
+                            ]
                         }
                     ]
                 },
                 "effectProperties": {
                     "size": {
                         "name": "token_size",
-                        "arguments": ["$tokens[0]"]
+                        "arguments": [
+                            "$tokens[0]"
+                        ]
                     },
                     "source": "$targets[0].position"
                 }
@@ -2728,7 +3588,9 @@
                         "$caster",
                         {
                             "name": "target_in_range",
-                            "arguments": [0]
+                            "arguments": [
+                                0
+                            ]
                         }
                     ]
                 },

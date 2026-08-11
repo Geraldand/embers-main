@@ -420,6 +420,8 @@ async function setupTargetToolModes() {
 }
 
 export async function setupDefaultCasterMenuOption() {
+    const role = await OBR.player.getRole();
+    if (role !== "GM") return;
     await OBR.contextMenu.remove(defaultCasterMenuId);
     await OBR.contextMenu.create({
             id: defaultCasterMenuId,
