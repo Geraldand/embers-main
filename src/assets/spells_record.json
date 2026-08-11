@@ -1,9 +1,11 @@
 {
     "shocking_grasp": {
         "name": "電爪",
-        "minTargets": 1,
+        "minTargets": 2,
+        "maxTargets": 2,
         "thumbnail": "Custom/Shocking_Grasp/Shocking-Grasp-5E.webp",
-        "replicate": "all",
+        "replicate": "no",
+        "firstTargetIsCaster": true,
         "copy": -1,
         "blueprints": [
             {
@@ -11,13 +13,14 @@
                 "id": "shocking_grasp",
                 "effectProperties": {
                     "source": "$targets[0].position",
-                    "size": "$targets[0].size"
+                    "destination": "$targets[1].position",
+                    "size": 1                   
                 }
             },
             {
                 "type": "action",
                 "id": "none",
-                "delay": 500,
+                "delay": 400,
                 "sound": "shocking-grasp.mp3"
             }
         ]

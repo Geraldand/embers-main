@@ -2,13 +2,13 @@
     "shocking_grasp": {
         "basename": "Custom/Shocking_Grasp/Hand_1_Push_1_BLUE",
         "thumbnail": "Custom/Shocking_Grasp/Shocking-Grasp-5E.webp",
-        "type": "CIRCLE",
+        "type": "TARGET",             
         "dpi": 200,
         "variants": {
-            "1200": {
+            "1200": {                  
                 "name": ["1200x1200"],
-                "duration": [3000],
-                "size": [1200, 1200]
+                "duration": [3000],    
+                "size": [1200, 1200]   
             }
         }
     },
