@@ -33,7 +33,7 @@
             {
                 "type": "action",
                 "id": "none",
-                "delay": 50,
+                "delay": 0,
                 "sound": "thunderwave.mp3",
                 "volume": 0.03
             }
@@ -3270,7 +3270,7 @@
             {
                 "type": "action",
                 "id": "none",
-                "delay": 800,
+                "delay": 650,
                 "sound": "Wood_Hit.mp3",
                 "disabled": {
                     "name": "not",
@@ -3474,7 +3474,7 @@
             {
                 "type": "action",
                 "id": "none",
-                "delay": 400,
+                "delay": 1000,
                 "sound": "Blade_Swoosh.mp3",
                 "disabled": {
                     "name": "not",
@@ -3570,7 +3570,7 @@
             {
                 "type": "action",
                 "id": "none",
-                "delay": 400,
+                "delay": 0,
                 "sound": "Punch.mp3",
                 "disabled": {
                     "name": "not",
@@ -3612,7 +3612,7 @@
             {
                 "type": "action",
                 "id": "none",
-                "delay": 400,
+                "delay": 0,
                 "sound": "Claw_slash.mp3",
                 "disabled": {
                     "name": "not",

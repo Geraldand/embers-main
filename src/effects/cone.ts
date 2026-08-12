@@ -29,12 +29,15 @@ export async function cone(
         x: coneInfo.source.x,
         y: coneInfo.source.y,
     };
-
+    let customAnchor = { x: 0.0, y: 0.5 };
+    if (effect && effect.basename && effect.basename.includes("BMid")) {
+        customAnchor = { x: 0.5, y: 1.0 };
+    }
     const result = buildEffectImage(
         coneInfo.name,
         effect,
         distance,
-        { x: 0.5, y: 1.0 },
+        customAnchor,
         position,
         rotation,
         variant,
