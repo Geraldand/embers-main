@@ -158,7 +158,7 @@ async function processInstruction(instruction: EffectInstruction, dpi: number, s
 
     if (instruction.sound) {
         console.log(`[Embers] 觸發音效邏輯 ->`, instruction.sound);
-        playSpellSound(instruction.sound, instruction.duration);
+        playSpellSound(instruction.sound, instruction.duration, 1.0, instruction.volume); // 👈 加上 instruction.volume
     }
     // 👆 新增這段追蹤日誌 👆
 

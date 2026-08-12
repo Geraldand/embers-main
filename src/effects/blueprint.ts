@@ -514,7 +514,11 @@ function parseBlueprint(element: EffectBlueprint, message: EffectInstruction[], 
         if (soundError) return { error: soundError };
         newInstruction.sound = soundValue as string;
     }
-    
+    if (element.volume != undefined) {
+        const { value: volumeValue, error: volumeError } = resolveSimpleValue(element.volume, "volume", "number", variables);
+        if (volumeError) return { error: volumeError };
+        newInstruction.volume = volumeValue as number;
+    }
     message.push(newInstruction);
     if (element.type === "action" && id) {
         const action = actions[id];

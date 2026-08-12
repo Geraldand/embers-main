@@ -34,7 +34,7 @@ export async function cone(
         coneInfo.name,
         effect,
         distance,
-        { x: 0, y: 0.5 },
+        { x: 0.5, y: 1.0 },
         position,
         rotation,
         variant,

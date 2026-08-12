@@ -155,8 +155,8 @@ function ParameterRow({
                     value={optionsValue ?? (parameter.defaultValue as string)}
                     onChange={(e) => setOptionsValue(e.target.value)}
                 >
-                    {(parameter.content as OptionsContent).map((option) => (
-                        <option key={option.label} value={option.value}>
+                    {(parameter.content as OptionsContent).map((option, index) => (
+                        <option key={`${option.value}-${index}`} value={option.value}>
                             {option.label}
                         </option>
                     ))}

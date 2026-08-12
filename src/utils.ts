@@ -119,7 +119,7 @@ export const easingFunctions = {
 // 紀錄各音效上次播放時間，避免多目標同時爆音
 const soundLastPlayMap = new Map<string, number>();
 
-export function playSpellSound(soundUrl: string, durationMs?: number, playbackRate: number = 1.0) {
+export function playSpellSound(soundUrl: string, durationMs?: number, playbackRate: number = 1.0, volume?: number) {
     if (!soundUrl || soundUrl === "none") return;
     const now = Date.now();
     const lastPlay = soundLastPlayMap.get(soundUrl) ?? 0;
@@ -135,7 +135,9 @@ export function playSpellSound(soundUrl: string, durationMs?: number, playbackRa
     try {
         const audio = new Audio(fullUrl);
         audio.playbackRate = playbackRate;
-        audio.volume = 0.09; // 音量降低 50% (原 0.5 -> 0.25)
+        
+        // 👇 若指令有指定音量就用指定的，否則用預設全域音量 0.09
+        audio.volume = volume !== undefined ? Math.max(0, Math.min(1, volume)) : 0.09; 
 
         audio.play().catch(e => {
             console.warn(`[Embers] 音效播放被阻擋:`, e);

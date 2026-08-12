@@ -5,8 +5,6 @@ import { ConeMessage } from "./cone";
 import { PossibleTarget } from "./blueprint";
 import { ProjectileMessage } from "./projectile";
 
-// src/types/messageListener.ts (尋找 EffectInstruction 並修改)
-
 export interface EffectInstruction {
     type: "effect" | "action";
     id?: string;
@@ -23,6 +21,7 @@ export interface EffectInstruction {
     
     // 👇 新增這行：用來指定音效的檔名 (例如 "ice_hit.mp3")
     sound?: string; 
+    volume?: number;
 }
 
 export interface InteractionData {

@@ -141,13 +141,13 @@ export default function SpellBook() {
 
     const castTokenSpell = async (spellData: any) => {
         playClickSound(); // 播放音效
-        const prefixedVariants = Object.fromEntries(
-            Object.entries(spellData.variants).map(([k, v]) => [`${APP_KEY}/${k}`, v])
-        );
+        
+        // 🚀 修正：與 Bubbles 統一，將變體完整打包傳入 spell-parameters
         await OBR.player.setMetadata({
             [`${APP_KEY}/selected-spell`]: spellData.embersId,
-            ...prefixedVariants
+            [`${APP_KEY}/spell-parameters`]: spellData.variants || {}
         });
+        
         await OBR.tool.activateTool(toolID);
     };
 

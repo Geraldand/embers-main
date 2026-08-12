@@ -1,4 +1,44 @@
 {
+    "thunderwave": {
+        "name": "雷鳴波",
+        "minTargets": 2,
+        "maxTargets": 2,
+        "thumbnail": "1st_Level/Thunderwave/Thunderwave_01_Bright_Blue_BMid_Thumb.webp",
+        "replicate": "no",
+        "firstTargetIsCaster": true,
+        "copy": -1,
+        "blueprints": [
+            {
+                "type": "effect",
+                "id": "thunderwave",
+                "duration": 1000,
+                "effectProperties": {
+                    "source": "$targets[0].position",
+                    "size": 3,
+                    "rotation": {
+                        "name": "add",
+                        "arguments": [
+                            {
+                                "name": "rotation",
+                                "arguments": [
+                                    "$targets[0].position",
+                                    "$targets[1].position"
+                                ]
+                            },
+                            90
+                        ]
+                    }
+                }
+            },
+            {
+                "type": "action",
+                "id": "none",
+                "delay": 50,
+                "sound": "thunderwave.mp3",
+                "volume": 0.03
+            }
+        ]
+    },
     "shocking_grasp": {
         "name": "電爪",
         "minTargets": 2,
@@ -2983,7 +3023,7 @@
                     },
                     {
                         "value": "dagger",
-                        "label": "短劍"
+                        "label": "短劍 / 匕首"
                     },
                     {
                         "value": "falchion",
@@ -3068,6 +3108,58 @@
                     {
                         "value": "wrench",
                         "label": "扳手"
+                    },
+                    {
+                        "value": "claw",
+                        "label": "爪擊"
+                    },
+                    {
+                        "value": "unarmed",
+                        "label": "徒手"
+                    }
+                ]
+            },
+            {
+                "name": "攻擊音效",
+                "id": "sound_variant",
+                "type": "options",
+                "defaultValue": "auto",
+                "content": [
+                    {
+                        "value": "auto",
+                        "label": "自動匹配"
+                    },
+                    {
+                        "value": "Blade_Swoosh.mp3",
+                        "label": "砍擊"
+                    },
+                    {
+                        "value": "Stab_Whiz.mp3",
+                        "label": "穿刺"
+                    },
+                    {
+                        "value": "Heavy_Thud_Resonance.mp3",
+                        "label": "槌擊"
+                    },
+                    {
+                        "value": "Wood_Hit.mp3",
+                        "label": "木製打擊"
+                    },
+                    {
+                        "value": "Claw_slash.mp3",
+                        "label": "爪擊"
+                    },
+                    {
+                        "value": "Punch.mp3",
+                        "label": "徒手"
+                    },
+                    {
+                        "value": "FX_Attack.mp3",
+                        "label": "通用特效 (無延遲)"
+                    },
+                    {
+                        "value": "none",
+                        "label": "無音效"
                     }
                 ]
             }
@@ -3082,11 +3174,12 @@
                         "$weapon_variant"
                     ]
                 },
+                "loops": 1,
                 "forceVariant": {
                     "name": "random_int",
                     "arguments": [
                         0,
-                        6
+                        8
                     ]
                 },
                 "effectProperties": {
@@ -3118,6 +3211,444 @@
                             0
                         ]
                     }
+                }
+            },
+            {
+                "type": "action",
+                "id": "none",
+                "delay": 0,
+                "sound": "FX_Attack.mp3",
+                "disabled": {
+                    "name": "not",
+                    "arguments": [
+                        {
+                            "name": "or",
+                            "arguments": [
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$sound_variant",
+                                        "FX_Attack.mp3"
+                                    ]
+                                },
+                                {
+                                    "name": "and",
+                                    "arguments": [
+                                        {
+                                            "name": "equals",
+                                            "arguments": [
+                                                "$sound_variant",
+                                                "auto"
+                                            ]
+                                        },
+                                        {
+                                            "name": "or",
+                                            "arguments": [
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "generic_slash"
+                                                    ]
+                                                },
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "generic_whirlwind"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "action",
+                "id": "none",
+                "delay": 800,
+                "sound": "Wood_Hit.mp3",
+                "disabled": {
+                    "name": "not",
+                    "arguments": [
+                        {
+                            "name": "or",
+                            "arguments": [
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$sound_variant",
+                                        "Wood_Hit.mp3"
+                                    ]
+                                },
+                                {
+                                    "name": "and",
+                                    "arguments": [
+                                        {
+                                            "name": "equals",
+                                            "arguments": [
+                                                "$sound_variant",
+                                                "auto"
+                                            ]
+                                        },
+                                        {
+                                            "name": "or",
+                                            "arguments": [
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "club"
+                                                    ]
+                                                },
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "quarterstaff"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "action",
+                "id": "none",
+                "delay": 400,
+                "sound": "Stab_Whiz.mp3",
+                "disabled": {
+                    "name": "not",
+                    "arguments": [
+                        {
+                            "name": "or",
+                            "arguments": [
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$sound_variant",
+                                        "Stab_Whiz.mp3"
+                                    ]
+                                },
+                                {
+                                    "name": "and",
+                                    "arguments": [
+                                        {
+                                            "name": "equals",
+                                            "arguments": [
+                                                "$sound_variant",
+                                                "auto"
+                                            ]
+                                        },
+                                        {
+                                            "name": "or",
+                                            "arguments": [
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "dagger"
+                                                    ]
+                                                },
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "rapier"
+                                                    ]
+                                                },
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "shortsword"
+                                                    ]
+                                                },
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "spear"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "action",
+                "id": "none",
+                "delay": 1300,
+                "sound": "Heavy_Thud_Resonance.mp3",
+                "disabled": {
+                    "name": "not",
+                    "arguments": [
+                        {
+                            "name": "or",
+                            "arguments": [
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$sound_variant",
+                                        "Heavy_Thud_Resonance.mp3"
+                                    ]
+                                },
+                                {
+                                    "name": "and",
+                                    "arguments": [
+                                        {
+                                            "name": "equals",
+                                            "arguments": [
+                                                "$sound_variant",
+                                                "auto"
+                                            ]
+                                        },
+                                        {
+                                            "name": "or",
+                                            "arguments": [
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "great_club"
+                                                    ]
+                                                },
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "hammer"
+                                                    ]
+                                                },
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "mace"
+                                                    ]
+                                                },
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "maul"
+                                                    ]
+                                                },
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "warhammer"
+                                                    ]
+                                                },
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "wrench"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "action",
+                "id": "none",
+                "delay": 400,
+                "sound": "Blade_Swoosh.mp3",
+                "disabled": {
+                    "name": "not",
+                    "arguments": [
+                        {
+                            "name": "or",
+                            "arguments": [
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$sound_variant",
+                                        "Blade_Swoosh.mp3"
+                                    ]
+                                },
+                                {
+                                    "name": "and",
+                                    "arguments": [
+                                        {
+                                            "name": "equals",
+                                            "arguments": [
+                                                "$sound_variant",
+                                                "auto"
+                                            ]
+                                        },
+                                        {
+                                            "name": "or",
+                                            "arguments": [
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "falchion"
+                                                    ]
+                                                },
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "glaive"
+                                                    ]
+                                                },
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "great_axe"
+                                                    ]
+                                                },
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "great_sword"
+                                                    ]
+                                                },
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "hand_axe"
+                                                    ]
+                                                },
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "laser_sword"
+                                                    ]
+                                                },
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "scimitar"
+                                                    ]
+                                                },
+                                                {
+                                                    "name": "equals",
+                                                    "arguments": [
+                                                        "$weapon_variant",
+                                                        "sword"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "action",
+                "id": "none",
+                "delay": 400,
+                "sound": "Punch.mp3",
+                "disabled": {
+                    "name": "not",
+                    "arguments": [
+                        {
+                            "name": "or",
+                            "arguments": [
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$sound_variant",
+                                        "Punch.mp3"
+                                    ]
+                                },
+                                {
+                                    "name": "and",
+                                    "arguments": [
+                                        {
+                                            "name": "equals",
+                                            "arguments": [
+                                                "$sound_variant",
+                                                "auto"
+                                            ]
+                                        },
+                                        {
+                                            "name": "equals",
+                                            "arguments": [
+                                                "$weapon_variant",
+                                                "unarmed"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "action",
+                "id": "none",
+                "delay": 400,
+                "sound": "Claw_slash.mp3",
+                "disabled": {
+                    "name": "not",
+                    "arguments": [
+                        {
+                            "name": "or",
+                            "arguments": [
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$sound_variant",
+                                        "Claw_slash.mp3"
+                                    ]
+                                },
+                                {
+                                    "name": "and",
+                                    "arguments": [
+                                        {
+                                            "name": "equals",
+                                            "arguments": [
+                                                "$sound_variant",
+                                                "auto"
+                                            ]
+                                        },
+                                        {
+                                            "name": "equals",
+                                            "arguments": [
+                                                "$weapon_variant",
+                                                "claw"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
                 }
             }
         ]
@@ -3248,62 +3779,6 @@
                         "label": "投擲燒瓶"
                     }
                 ]
-            },
-            {
-                "name": "發射音效",
-                "id": "sound_variant",
-                "type": "options",
-                "defaultValue": "throw.mp3",
-                "content": [
-                    {
-                        "value": "arrow.mp3",
-                        "label": "弓箭射擊"
-                    },
-                    {
-                        "value": "throw.mp3",
-                        "label": "投擲破空"
-                    },
-                    {
-                        "value": "gunshot.mp3",
-                        "label": "槍砲射擊"
-                    },
-                    {
-                        "value": "laser.mp3",
-                        "label": "雷射光束"
-                    },
-                    {
-                        "value": "boulder.mp3",
-                        "label": "沉重巨石"
-                    },
-                    {
-                        "value": "bomb.mp3",
-                        "label": "炸彈爆炸"
-                    },
-                    {
-                        "value": "magic_missile.mp3",
-                        "label": "魔法飛彈"
-                    },
-                    {
-                        "value": "glass_shatter.mp3",
-                        "label": "玻璃碎裂"
-                    },
-                    {
-                        "value": "wood_break.mp3",
-                        "label": "木製破裂"
-                    },
-                    {
-                        "value": "crossbow.mp3",
-                        "label": "弩射擊"
-                    },
-                    {
-                        "value": "dagger.mp3",
-                        "label": "匕首投擲"
-                    },
-                    {
-                        "value": "none",
-                        "label": "無音效"
-                    }
-                ]
             }
         ],
         "blueprints": [
@@ -3316,7 +3791,6 @@
                         "$weapon_variant"
                     ]
                 },
-                "sound": "$sound_variant",
                 "effectProperties": {
                     "source": "$targets[0].position",
                     "destination": "$targets[1].position",
@@ -3326,27 +3800,356 @@
                     {
                         "type": "action",
                         "id": "none",
-                        "delay": 2000,
-                        "sound": {
-                            "name": "match",
+                        "delay": 0,
+                        "sound": "glass_shatter.mp3",
+                        "disabled": {
+                            "name": "not",
                             "arguments": [
-                                "$weapon_variant",
                                 {
-                                    "arrow.green": "arrow.mp3",
-                                    "arrow.white": "arrow.mp3",
-                                    "arrow.blue": "arrow.mp3",
-                                    "bolt": "crossbow.mp3",
-                                    "boulder_toss": "boulder.mp3",
-                                    "bullet.orange": "gunshot.mp3",
-                                    "cannon_ball": "cannon.mp3",
-                                    "throw.bomb": "bomb.mp3",
-                                    "throw.flask": "glass_shatter.mp3"
-                                },
-                                "throw.mp3"
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "throw.flask"
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "type": "action",
+                        "id": "none",
+                        "delay": 0,
+                        "sound": "bomb.mp3",
+                        "disabled": {
+                            "name": "not",
+                            "arguments": [
+                                {
+                                    "name": "or",
+                                    "arguments": [
+                                        {
+                                            "name": "equals",
+                                            "arguments": [
+                                                "$weapon_variant",
+                                                "throw.bomb"
+                                            ]
+                                        },
+                                        {
+                                            "name": "equals",
+                                            "arguments": [
+                                                "$weapon_variant",
+                                                "cannon_ball"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "type": "action",
+                        "id": "none",
+                        "delay": 0,
+                        "sound": "wood_break.mp3",
+                        "disabled": {
+                            "name": "not",
+                            "arguments": [
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "barrel_toss.wooden"
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "type": "action",
+                        "id": "none",
+                        "delay": 0,
+                        "sound": "boulder.mp3",
+                        "disabled": {
+                            "name": "not",
+                            "arguments": [
+                                {
+                                    "name": "or",
+                                    "arguments": [
+                                        {
+                                            "name": "equals",
+                                            "arguments": [
+                                                "$weapon_variant",
+                                                "boulder_toss"
+                                            ]
+                                        },
+                                        {
+                                            "name": "equals",
+                                            "arguments": [
+                                                "$weapon_variant",
+                                                "snowball"
+                                            ]
+                                        }
+                                    ]
+                                }
                             ]
                         }
                     }
                 ]
+            },
+            {
+                "type": "action",
+                "id": "none",
+                "delay": 50,
+                "sound": "arrow.mp3",
+                "disabled": {
+                    "name": "not",
+                    "arguments": [
+                        {
+                            "name": "or",
+                            "arguments": [
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "arrow.green"
+                                    ]
+                                },
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "arrow.white"
+                                    ]
+                                },
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "arrow.blue"
+                                    ]
+                                },
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "snipe"
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "action",
+                "id": "none",
+                "delay": 450,
+                "sound": "crossbow.mp3",
+                "disabled": {
+                    "name": "not",
+                    "arguments": [
+                        {
+                            "name": "equals",
+                            "arguments": [
+                                "$weapon_variant",
+                                "bolt"
+                            ]
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "action",
+                "id": "none",
+                "delay": 150,
+                "sound": "gunshot.mp3",
+                "disabled": {
+                    "name": "not",
+                    "arguments": [
+                        {
+                            "name": "or",
+                            "arguments": [
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "bullet.orange"
+                                    ]
+                                },
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "bullet.large_orange"
+                                    ]
+                                },
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "bullet.blue"
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "action",
+                "id": "none",
+                "delay": 150,
+                "sound": "dagger.mp3",
+                "disabled": {
+                    "name": "not",
+                    "arguments": [
+                        {
+                            "name": "equals",
+                            "arguments": [
+                                "$weapon_variant",
+                                "dagger.throw"
+                            ]
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "action",
+                "id": "none",
+                "delay": 0,
+                "sound": "laser.mp3",
+                "disabled": {
+                    "name": "not",
+                    "arguments": [
+                        {
+                            "name": "or",
+                            "arguments": [
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "laser_shot.blue"
+                                    ]
+                                },
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "laser_shot.green"
+                                    ]
+                                },
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "laser_shot.orange"
+                                    ]
+                                },
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "laser_shot.red"
+                                    ]
+                                },
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "laser_sword.blue"
+                                    ]
+                                },
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "laser_sword.red"
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "action",
+                "id": "none",
+                "delay": 0,
+                "sound": "magic_missile.mp3",
+                "disabled": {
+                    "name": "not",
+                    "arguments": [
+                        {
+                            "name": "or",
+                            "arguments": [
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "missile.blue"
+                                    ]
+                                },
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "missile.white"
+                                    ]
+                                },
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "missile.wide_white"
+                                    ]
+                                },
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "missile.purple_pink"
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "action",
+                "id": "none",
+                "delay": 150,
+                "sound": "throw.mp3",
+                "disabled": {
+                    "name": "not",
+                    "arguments": [
+                        {
+                            "name": "or",
+                            "arguments": [
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "barrel_toss.metal"
+                                    ]
+                                },
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "shield.throw"
+                                    ]
+                                },
+                                {
+                                    "name": "equals",
+                                    "arguments": [
+                                        "$weapon_variant",
+                                        "shield.complete"
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
             }
         ]
     },

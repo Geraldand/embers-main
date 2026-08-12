@@ -1,4 +1,24 @@
 {
+    "thunderwave": {
+        "basename": "1st_Level/Thunderwave/Thunderwave_01_Bright_Blue_BMid",
+        "thumbnail": "1st_Level/Thunderwave/Thunderwave_01_Bright_Blue_BMid_Thumb.webp",
+        "type": "CONE",
+        "dpi": 200,
+        "variants": {
+            "600": {
+                "name": [
+                    "600x600"
+                ],
+                "duration": [
+                    1000
+                ],
+                "size": [
+                    600,
+                    600
+                ]
+            }
+        }
+    },
     "shocking_grasp": {
         "basename": "Custom/Shocking_Grasp/Hand_1_Push_1_BLUE",
         "thumbnail": "Custom/Shocking_Grasp/Shocking-Grasp-5E.webp",
@@ -1352,26 +1372,6 @@
                 "size": [
                     300,
                     300
-                ]
-            }
-        }
-    },
-    "thunderwave": {
-        "basename": "1st_Level/Thunderwave/Thunderwave_01_Bright_Blue_Center",
-        "thumbnail": "1st_Level/Thunderwave/Thunderwave_01_Bright_Blue_Center_Thumb.webp",
-        "type": "CIRCLE",
-        "dpi": 200,
-        "variants": {
-            "600": {
-                "name": [
-                    "600x600"
-                ],
-                "duration": [
-                    1030
-                ],
-                "size": [
-                    600,
-                    600
                 ]
             }
         }
@@ -20940,6 +20940,74 @@
         "weapon_attacks": {
             "melee": {
                 "single": {
+                    "unarmed": {
+                        "basename": "Generic/Creature/Fist/CreatureAttackFist",
+                        "thumbnail": "Generic/Creature/Fist/CreatureAttackFist_002_004_Blue_Thumb.webp",
+                        "type": "CIRCLE",
+                        "dpi": 200,
+                        "variants": {
+                            "600": {
+                                "name": [
+                                    "001_001_Red_800x600",
+                                    "001_002_Red_800x600",
+                                    "001_003_Red_800x600",
+                                    "001_004_Red_800x600",
+                                    "002_001_Blue_800x600",
+                                    "002_002_Blue_800x600",
+                                    "002_003_Blue_800x600",
+                                    "002_004_Blue_800x600"
+                                ],
+                                "duration": [
+                                    1200,
+                                    1200,
+                                    1200,
+                                    1200,
+                                    1200,
+                                    1200,
+                                    1200,
+                                    1200
+                                ],
+                                "size": [
+                                    800,
+                                    600
+                                ]
+                            }
+                        }
+                    },
+                    "claw": {
+                        "basename": "Generic/Creature/Claw/CreatureAttackClaw",
+                        "thumbnail": "Generic/Creature/Claw/CreatureAttackClaw_002_004_Red_Thumb.webp",
+                        "type": "CIRCLE",
+                        "dpi": 200,
+                        "variants": {
+                            "600": {
+                                "name": [
+                                    "001_001_Red_800x600",
+                                    "001_002_Red_800x600",
+                                    "001_003_Red_800x600",
+                                    "001_004_Red_800x600",
+                                    "002_001_Red_800x600",
+                                    "002_002_Red_800x600",
+                                    "002_003_Red_800x600",
+                                    "002_004_Red_800x600"
+                                ],
+                                "duration": [
+                                    1200,
+                                    1200,
+                                    1200,
+                                    1200,
+                                    1200,
+                                    1200,
+                                    1200,
+                                    1200
+                                ],
+                                "size": [
+                                    800,
+                                    600
+                                ]
+                            }
+                        }
+                    },
                     "club": {
                         "basename": "Generic/Weapon_Attacks/Melee/Club01",
                         "thumbnail": "Generic/Weapon_Attacks/Melee/Club01_01_Regular_White_Thumb.webp",
