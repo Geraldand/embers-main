@@ -43,7 +43,28 @@ async function backgroundPreloadAssets() {
     }
 
     urlsToPreload.forEach((url) => {
-        fetch(url).catch(() => {});
+        // 為了確保 OBR 主網頁和你的擴充功能對應同一個快取，加上你的完整 Vercel 網址 (如果有的話) 或使用絕對路徑
+        const fullUrl = url.startsWith("http") ? url : window.location.origin + url;
+
+        if (url.endsWith('.webm')) {
+            // 針對動畫：在背景建立一個隱形的影片標籤，強迫瀏覽器熱機解碼
+            const vid = document.createElement('video');
+            vid.src = fullUrl;
+            vid.preload = 'auto'; // 強制自動載入
+            vid.muted = true;     // 必須靜音，否則會被瀏覽器擋下來
+            vid.style.display = 'none';
+            document.body.appendChild(vid); 
+        } 
+        else if (url.endsWith('.mp3')) {
+            // 針對音效：建立音效物件
+            const aud = new Audio();
+            aud.src = fullUrl;
+            aud.preload = 'auto';
+        } 
+        else {
+            // 針對圖片或其他資源：強制使用快取模式
+            fetch(fullUrl, { mode: 'cors', cache: 'force-cache' }).catch(() => {});
+        }
     });
 }
 
