@@ -105,16 +105,26 @@ function setupScene() {
     // 🌟 新增：場景準備好時，啟動背景全自動預載
     backgroundPreloadAssets();
 
-    // 🌟 新增：監聽地圖上的 Token 變動 (換地圖或拖入新怪物時觸發預載)
+    // 2. 監聽地圖上的 Token 變動 (換地圖或拖入新怪物時觸發預載)
     const unsubscribeItems = OBR.scene.items.onChange((items) => {
         items.forEach((item) => {
             const equippedSpell = item.metadata["embers-custom/equipped-spell"] as string;
             if (equippedSpell && (spellsRecord as Record<string, any>)[equippedSpell]) {
                 const spell = (spellsRecord as Record<string, any>)[equippedSpell];
-                if (spell.thumbnail) fetch(`/Library/${spell.thumbnail}`).catch(() => {});
+                
+                // 動態抓取該 Token 的縮圖
+                if (spell.thumbnail) {
+                    const fullUrl = window.location.origin + `/Library/${spell.thumbnail}`;
+                    fetch(fullUrl, { mode: 'cors', cache: 'force-cache' }).catch(() => {});
+                }
+                
+                // 動態抓取該 Token 的音效 (🌟 加上防呆機制)
                 if (Array.isArray(spell.blueprints)) {
                     spell.blueprints.forEach((bp: any) => {
-                        if (bp.sound) fetch(`/sounds/${bp.sound}`).catch(() => {});
+                        if (bp.sound && typeof bp.sound === "string") {
+                            const fullUrl = window.location.origin + `/sounds/${bp.sound}`;
+                            fetch(fullUrl, { mode: 'cors', cache: 'force-cache' }).catch(() => {});
+                        }
                     });
                 }
             }
