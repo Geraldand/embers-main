@@ -93,7 +93,7 @@ export const SplashScreen = ({
             </Paper>
 
             <Button variant="contained" color="primary" size="medium" fullWidth onClick={() => { playClickSound(); onReady(); }} sx={{ py: 1, fontSize: "0.95rem", fontWeight: "bold", borderRadius: 1.5, flexShrink: 0, boxShadow: 1 }}>
-                {role === "GM" ? "進入 DM 介面" : isViewingAgain ? "返回待命畫面" : "⚔️ 我準備好了！"}
+                {role === "GM" ? "進入 DM 介面" : isViewingAgain ? "返回待命畫面" : "我準備好了！"}
             </Button>
         </Box>
     );

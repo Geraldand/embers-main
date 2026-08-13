@@ -7,25 +7,38 @@ import spellsRecord from "./assets/spells_record.json";
 import effectRecord from "./assets/effect_record.json"; // 🌟 新增：引入 effectRecord 以便讀取 WebM 檔名
 
 // 🌟 新增：自動收集並預載所有素材的函數
+// 自動收集並預載素材的函數 (精準修復版)
 async function backgroundPreloadAssets() {
     const urlsToPreload = new Set<string>();
 
     urlsToPreload.add("/click.mp3");
 
     try {
+        // 1. 預載預設法術書 (spells_record.json) 的素材
         Object.values(spellsRecord as Record<string, any>).forEach((spell) => {
             if (spell.thumbnail) urlsToPreload.add(`/Library/${spell.thumbnail}`);
             if (Array.isArray(spell.blueprints)) {
                 spell.blueprints.forEach((bp: any) => {
-                    if (bp.sound) urlsToPreload.add(`/sounds/${bp.sound}`);
+                    // 🛡️ 防呆機制：確保 sound 是一串文字，而不是物件
+                    if (bp.sound && typeof bp.sound === "string") {
+                        urlsToPreload.add(`/sounds/${bp.sound}`);
+                    }
                     if (bp.id && (effectRecord as Record<string, any>)[bp.id]) {
                         const effect = (effectRecord as Record<string, any>)[bp.id];
-                        if (effect.basename) urlsToPreload.add(`/Library/${effect.basename}.webm`);
+                        // 🌟 修正：正確抓取尺寸變體 (Variant) 的完整檔名
+                        if (effect.basename && effect.variants) {
+                            const variantKey = Object.keys(effect.variants)[0];
+                            if (variantKey) {
+                                const variantName = effect.variants[variantKey].name[0];
+                                urlsToPreload.add(`/Library/${effect.basename}_${variantName}.webm`);
+                            }
+                        }
                     }
                 });
             }
         });
 
+        // 2. 預載房間內的自訂法術 (Custom Spells)
         const metadata = await OBR.room.getMetadata();
         const customSpells = metadata["embers-custom/spells"] as Record<string, any>;
         if (customSpells) {
@@ -33,7 +46,9 @@ async function backgroundPreloadAssets() {
                 if (spell.thumbnail) urlsToPreload.add(`/Library/${spell.thumbnail}`);
                 if (Array.isArray(spell.blueprints)) {
                     spell.blueprints.forEach((bp: any) => {
-                        if (bp.sound) urlsToPreload.add(`/sounds/${bp.sound}`);
+                        if (bp.sound && typeof bp.sound === "string") {
+                            urlsToPreload.add(`/sounds/${bp.sound}`);
+                        }
                     });
                 }
             });
@@ -42,29 +57,10 @@ async function backgroundPreloadAssets() {
         console.warn("[Embers Background] 預載掃描失敗:", e);
     }
 
+    // 🌟 溫和且強大的預載：利用 fetch 觸發 vercel.json 的終極快取，不佔用 RAM
     urlsToPreload.forEach((url) => {
-        // 為了確保 OBR 主網頁和你的擴充功能對應同一個快取，加上你的完整 Vercel 網址 (如果有的話) 或使用絕對路徑
         const fullUrl = url.startsWith("http") ? url : window.location.origin + url;
-
-        if (url.endsWith('.webm')) {
-            // 針對動畫：在背景建立一個隱形的影片標籤，強迫瀏覽器熱機解碼
-            const vid = document.createElement('video');
-            vid.src = fullUrl;
-            vid.preload = 'auto'; // 強制自動載入
-            vid.muted = true;     // 必須靜音，否則會被瀏覽器擋下來
-            vid.style.display = 'none';
-            document.body.appendChild(vid); 
-        } 
-        else if (url.endsWith('.mp3')) {
-            // 針對音效：建立音效物件
-            const aud = new Audio();
-            aud.src = fullUrl;
-            aud.preload = 'auto';
-        } 
-        else {
-            // 針對圖片或其他資源：強制使用快取模式
-            fetch(fullUrl, { mode: 'cors', cache: 'force-cache' }).catch(() => {});
-        }
+        fetch(fullUrl, { mode: 'cors', cache: 'force-cache' }).catch(() => {});
     });
 }
 
