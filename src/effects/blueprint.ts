@@ -175,7 +175,11 @@ function parseBlueprint(element: EffectBlueprint, message: EffectInstruction[], 
     if (isError(maybeDuration)) {
         return maybeDuration;
     }
-    const duration = maybeDuration.value;
+    let duration = maybeDuration.value;
+
+    if (duration != undefined) {
+        duration += 300; 
+    }
 
     const maybeLoops = resolveSimpleValue<number>(element.loops, "loops", "number", variables);
     if (isError(maybeLoops)) {
