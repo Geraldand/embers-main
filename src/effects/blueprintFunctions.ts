@@ -348,7 +348,25 @@ function index_of(resolve: BlueprintFunctionResolveArgs, arg1: BlueprintValue<un
     if (!Array.isArray(array.value)) {
         return _error("the second argument of index_of must be an array");
     }
-    const index = (array.value as unknown[]).findIndex(possibleObj => JSON.stringify(possibleObj) === JSON.stringify(obj.value));
+
+    const targetObj = obj.value;
+    const isTargetObj = typeof targetObj === "object" && targetObj !== null;
+    const targetStr = isTargetObj ? JSON.stringify(targetObj) : "";
+
+    const index = (array.value as unknown[]).findIndex(possibleObj => {
+        if (possibleObj === targetObj) return true;
+        if (isTargetObj && typeof possibleObj === "object" && possibleObj !== null) {
+            if ('id' in targetObj && 'id' in possibleObj) {
+                return (targetObj as any).id === (possibleObj as any).id;
+            }
+            if ('x' in targetObj && 'y' in targetObj && 'x' in possibleObj && 'y' in possibleObj) {
+                return (targetObj as any).x === (possibleObj as any).x && (targetObj as any).y === (possibleObj as any).y;
+            }
+            return JSON.stringify(possibleObj) === targetStr;
+        }
+        return false;
+    });
+
     return _value(index != -1 ? index : undefined);
 }
 

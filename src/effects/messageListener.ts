@@ -57,33 +57,39 @@ async function createItemInteractions({ ids, count }: InteractionData, localOnly
     // Register a callback every "updateDelay" milliseconds
     let latestItems: Image[] = [];
 
-    let intervalId: number | null = null;
-    const afterDelay = () => {
-        const now = Date.now();
-        latestItems = update(itemsToUpdate => {
-            for (const updater of ongoingUpdaters) {
-                const elapsed = now - updater.start;
-                const updaterItemIDs = updater.items.map(item => item.id.startsWith("embers-copy-") ? item.id : `embers-copy-${item.id}`);
-                const keepGoing = updater.onUpdate(
-                    itemsToUpdate.filter(itemToUpdate => updaterItemIDs.includes(itemToUpdate.id.toString())),
-                    elapsed
-                );
-                if (!keepGoing) {
-                    count--;
-                    updater.resolve(updater.items);
-                    updater.resolved = true;
+    let animationFrameId: number;
+    let lastUpdateTime = 0;
+    
+    const afterDelay = (timestamp: number) => {
+        if (timestamp - lastUpdateTime >= updateDelay) {
+            lastUpdateTime = timestamp;
+            const now = Date.now();
+            latestItems = update(itemsToUpdate => {
+                for (const updater of ongoingUpdaters) {
+                    const elapsed = now - updater.start;
+                    const updaterItemIDs = updater.items.map(item => item.id.startsWith("embers-copy-") ? item.id : `embers-copy-${item.id}`);
+                    const keepGoing = updater.onUpdate(
+                        itemsToUpdate.filter(itemToUpdate => updaterItemIDs.includes(itemToUpdate.id.toString())),
+                        elapsed
+                    );
+                    if (!keepGoing) {
+                        count--;
+                        updater.resolve(updater.items);
+                        updater.resolved = true;
+                    }
                 }
-            }
-        });
+            });
 
-        for (let i = ongoingUpdaters.length - 1; i >= 0; i--) {
-            if (ongoingUpdaters[i].resolved === true) {
-                ongoingUpdaters.splice(i, 1);
+            for (let i = ongoingUpdaters.length - 1; i >= 0; i--) {
+                if (ongoingUpdaters[i].resolved === true) {
+                    ongoingUpdaters.splice(i, 1);
+                }
             }
         }
 
-        if (count <= 0) {
-            clearInterval(intervalId!);
+        if (count > 0) {
+            animationFrameId = requestAnimationFrame(afterDelay);
+        } else {
             stop();
             if (!localOnly) {
                 OBR.scene.items.updateItems(originalItemIDs, items => {
@@ -101,7 +107,8 @@ async function createItemInteractions({ ids, count }: InteractionData, localOnly
             OBR.scene.local.deleteItems(localItemIDs);
         }
     };
-    intervalId = window.setInterval(afterDelay, updateDelay);
+    
+    animationFrameId = requestAnimationFrame(afterDelay);
 
     const registerUpdates = async (items: Image[], onUpdate: InteractionUpdateFunc) => {
         return new Promise<Image[]>(resolve => {
@@ -331,17 +338,45 @@ async function processInstruction(instruction: EffectInstruction, dpi: number, s
 }
 
 export function setupMessageListener() {
-    return OBR.broadcast.onMessage(MESSAGE_CHANNEL, async message => {
+    // 效能優化：將 playerId, dpi, party 快取在監聽器外部，避免施法瞬間觸發網路請求阻塞動畫
+    let cachedPlayerId: string | undefined;
+    let cachedDpi: number | undefined;
+    let cachedParty: any[] = [];
+
+    OBR.player.getId().then(id => cachedPlayerId = id);
+    OBR.scene.grid.getDpi().then(dpi => cachedDpi = dpi);
+    OBR.party.getPlayers().then(players => cachedParty = players);
+
+    const unsubGrid = OBR.scene.grid.onChange(grid => cachedDpi = grid.dpi);
+    const unsubParty = OBR.party.onChange(players => cachedParty = players);
+
+    const unsubMessage = OBR.broadcast.onMessage(MESSAGE_CHANNEL, async message => {
         const messageData = message.data as MessageType;
         if (!Array.isArray(messageData.instructions)) {
             log_error("Malformatted message: message.instructions is not an array");
         }
-        const spellName = messageData.spellData ? messageData.spellData.name : undefined;
-        const spellCaster = messageData.spellData ? messageData.spellData.caster : undefined;
-        const [playerId, dpi] = await Promise.all([
-            OBR.player.getId(),
-            OBR.scene.grid.getDpi(),
-        ]);
+        
+        let spellName = messageData.spellData ? messageData.spellData.name : undefined;
+        let spellCaster = messageData.spellData ? messageData.spellData.caster : undefined;
+        
+        const playerId = cachedPlayerId ?? await OBR.player.getId();
+        const dpi = cachedDpi ?? await OBR.scene.grid.getDpi();
+
+        // 🌟 強制捕獲施法者 ID：使用快取的 party 資料，移除 await OBR.party.getPlayers() 的延遲
+        if (!spellCaster) {
+            if (message.connectionId === OBR.player.connectionId) {
+                spellCaster = playerId;
+            } else {
+                const sender = cachedParty.find(p => p.connectionId === message.connectionId);
+                if (sender) spellCaster = sender.id;
+            }
+        }
+        
+        // 🌟 強制賦予法術名稱：確保能被 Active Effects 列表抓到
+        if (!spellName && messageData.instructions && messageData.instructions.length > 0) {
+            spellName = messageData.instructions[0].id;
+        }
+
         try {
             const interactions = messageData.interactions;
             const interaction = await ((interactions === undefined || interactions.ids.length === 0) ?
@@ -356,4 +391,10 @@ export function setupMessageListener() {
             log_error(error);
         }
     });
+
+    return () => {
+        unsubGrid();
+        unsubParty();
+        unsubMessage();
+    };
 }

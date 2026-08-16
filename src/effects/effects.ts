@@ -43,18 +43,26 @@ function gatherEffectNames() {
     return names;
 }
 
+const effectCache = new Map<string, Effect | undefined>();
+
 export function getEffect(name: string): Effect | undefined {
+    if (effectCache.has(name)) {
+        return effectCache.get(name);
+    }
     const keys = getKeysFromEffectName(name);
     let effect: Effects|Effect = effects;
     for (const key of keys) {
         if ((effect as Effects)[key] == undefined || isEffect(effect)) {
+            effectCache.set(name, undefined);
             return undefined;
         }
         effect = effect[key];
     }
     if (isEffect(effect)) {
+        effectCache.set(name, effect);
         return effect;
     }
+    effectCache.set(name, undefined);
     return undefined;
 }
 
@@ -119,14 +127,24 @@ export function getDistance(source: Vector2, destination: Vector2) {
 }
 
 export async function registerEffect(images: Image[], duration: number, spellCaster?: string) {
-    if (duration >= 0) {
+    if (duration > 0) {
         await OBR.scene.local.addItems(images);
-        await waitMs(duration);
+        // 提前 80ms 刪除，防止 WebM 影片在 DOM 節點移除前觸發第二輪播放
+        const waitTime = Math.max(0, duration - 80);
+        await waitMs(waitTime);
         await OBR.scene.local.deleteItems(images.map(image => image.id));
-    }
+    } 
     else {
-        const [summonRule, id, role] = await Promise.all([getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.SUMMONED_ENTITIES_RULE), OBR.player.getId(), OBR.player.getRole()]);
-        if ((summonRule === "caster" && id === spellCaster) || (summonRule === "gm-only" && role === "GM")) {
+        // duration <= 0 (包含 -1) 寫入全域地圖，成為持續型法術
+        try {
+            const summonRuleSetting = await getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.SUMMONED_ENTITIES_RULE);
+            const summonRule = summonRuleSetting || "caster"; 
+            const [id, role] = await Promise.all([OBR.player.getId(), OBR.player.getRole()]);
+            
+            if ((summonRule === "caster" && id === spellCaster) || (summonRule === "gm-only" && role === "GM") || summonRule === "all" || !spellCaster) {
+                await OBR.scene.items.addItems(images);
+            }
+        } catch (e) {
             await OBR.scene.items.addItems(images);
         }
     }
@@ -162,8 +180,21 @@ export function buildEffectImage(
         x: scale,
         y: scale
     };
-    const effectDurationArray = duration ? [duration] : effect.variants[effectVariantName].duration;
-    const effectDuration = (loops ?? 1) * (variantIndex ? (effectDurationArray.length > variantIndex ? effectDurationArray[variantIndex] : effectDurationArray[0]): effectDurationArray[0]);
+    const effectDurationArray = effect.variants[effectVariantName].duration;
+    let baseDuration = effectDurationArray[0];
+    if (variantIndex !== undefined && effectDurationArray.length > variantIndex) {
+        baseDuration = effectDurationArray[variantIndex];
+    }
+
+    let actualLoops = (loops !== undefined && loops > 0) ? loops : 1;
+    let effectDuration = -1;
+
+    // 只要 duration, baseDuration 或 loops 為 0 或負數，一律判定為持續型法術 (-1)
+    if ((duration !== undefined && duration <= 0) || baseDuration <= 0 || loops === 0) {
+        effectDuration = -1;
+    } else {
+        effectDuration = baseDuration * actualLoops;
+    }
 
     const url = getEffectURL(effectName, effectVariantName, variantIndex ? variantIndex % (effect.variants[effectVariantName].name.length) : undefined);
     if (url == undefined) {
@@ -217,11 +248,15 @@ export function buildEffectImage(
 
 export function prefetchAssets(assets: string[]) {
     const fetches = assets.map(async asset => {
-        const response = await fetch(
-            asset,
-            { cache: "force-cache" }
-        );
-        await response.blob(); // Make sure all data is received
+        try {
+            const response = await fetch(
+                asset,
+                { mode: "cors", cache: "force-cache" }
+            );
+            await response.blob(); // Make sure all data is received
+        } catch (e) {
+            console.warn(`[Embers] Prefetch failed for ${asset}`, e);
+        }
     });
     return Promise.all(fetches);
 }
@@ -264,21 +299,24 @@ export function doEffect(effectName: string, effect?: Effect) {
                 return;
             }
 
-            const targetAttachments = targets.map(
-                async target => target.attachedTo ? (await OBR.scene.items.getItems([target.attachedTo]))[0] : undefined
-            );
-
-            Promise.all(targetAttachments).then(attachments => {
+            // 效能優化：批次取得所有 attachedTo 的 Items
+            const attachmentIds = targets.map(t => t.attachedTo).filter((id): id is string => id != undefined);
+            OBR.scene.items.getItems(attachmentIds).then(items => {
+                const itemMap = new Map(items.map(i => [i.id, i]));
+                
                 OBR.broadcast.sendMessage(
                     MESSAGE_CHANNEL,
                     {
-                        instructions: targets.map((target, i) => ({
-                            id: effectName,
-                            effectProperties: {
-                                position: target.position,
-                                size: attachments[i] ? getItemSize(attachments[i]) : 5,
-                            }
-                        }))
+                        instructions: targets.map((target) => {
+                            const attachment = target.attachedTo ? itemMap.get(target.attachedTo) : undefined;
+                            return {
+                                id: effectName,
+                                effectProperties: {
+                                    position: target.position,
+                                    size: attachment ? getItemSize(attachment) : 5,
+                                }
+                            };
+                        })
                     },
                     { destination: "ALL" }
                 );

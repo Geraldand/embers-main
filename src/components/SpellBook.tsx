@@ -163,45 +163,135 @@ export default function SpellBook() {
     useEffect(() => {
         if (!obr.ready) return;
 
-        const updateTokenSpells = async (selection: string[]) => {
-            if (!selection || selection.length !== 1) return;
+        let currentSelection: string[] = [];
+
+        const updateTokenSpells = async (selection?: string[] | null) => {
+            currentSelection = selection || [];
+            if (currentSelection.length !== 1) {
+                setTokenSpells([]);
+                setSelectedTokenName(null);
+                return;
+            }
+
             const items = await OBR.scene.items.getItems([selection[0]]);
-            if (items.length === 0) return;
+            if (items.length === 0) {
+                setTokenSpells([]);
+                setSelectedTokenName(null);
+                return;
+            }
 
             const item = items[0];
-            let meta: any = null;
-            for (const key of Object.keys(item.metadata)) {
-                if (key.endsWith("/metadata")) {
-                    const candidate = item.metadata[key] as any;
-                    if (candidate && (Array.isArray(candidate.actions) || Array.isArray(candidate.spells))) {
-                        meta = candidate;
-                        break;
+            const tokenName = (item.text as any)?.plainText || item.name || "未命名 Token";
+            const availableSpells: any[] = [];
+            const addedSpellKeys = new Set<string>();
+
+            const processSpellOrAction = (entry: any, defaultType: "spell" | "action") => {
+                if (!entry) return;
+                
+                // 嚴格過濾：僅接受字串（純特效 ID）或明確指定 embersId 的物件
+                let embersId = null;
+                if (typeof entry === "string") {
+                    embersId = entry;
+                } else if (typeof entry === "object" && entry.embersId) {
+                    embersId = entry.embersId;
+                }
+
+                // 若不具備特效 ID 或為空字串，直接略過，不加入法術書
+                if (!embersId || typeof embersId !== "string" || embersId.trim() === "") {
+                    return;
+                }
+
+                const name = entry.name || entry.title || entry.label || embersId || "未知法術";
+                const variants = entry.embersVariants || entry.variants || {};
+                const type = entry.type || defaultType;
+
+                const uniqueKey = `${type}-${embersId}-${name}`;
+                if (!addedSpellKeys.has(uniqueKey)) {
+                    addedSpellKeys.add(uniqueKey);
+                    availableSpells.push({
+                        type,
+                        name,
+                        embersId,
+                        variants
+                    });
+                }
+            };
+
+            for (const [key, rawValue] of Object.entries(item.metadata || {})) {
+                let val = rawValue;
+                if (typeof val === "string") {
+                    // 效能優化：僅在字串看起來像 JSON 時才進行解析，避免頻繁的 parse error
+                    if (val.startsWith("{") || val.startsWith("[")) {
+                        try {
+                            val = JSON.parse(val);
+                        } catch (e) {
+                            // 忽略
+                        }
+                    } else if (key.includes("equipped-spell") || key.includes("spell")) {
+                        processSpellOrAction(val, "spell");
+                    }
+                }
+
+                if (Array.isArray(val)) {
+                    val.forEach(itemEntry => processSpellOrAction(itemEntry, "spell"));
+                } else if (val && typeof val === "object") {
+                    const obj = val as Record<string, any>;
+                    if (Array.isArray(obj.actions)) {
+                        obj.actions.forEach((act: any) => processSpellOrAction(act, "action"));
+                    } else if (obj.actions && typeof obj.actions === "object") {
+                        Object.values(obj.actions).forEach((act: any) => processSpellOrAction(act, "action"));
+                    }
+
+                    if (Array.isArray(obj.spells)) {
+                        obj.spells.forEach((sp: any) => processSpellOrAction(sp, "spell"));
+                    } else if (obj.spells && typeof obj.spells === "object") {
+                        Object.values(obj.spells).forEach((sp: any) => processSpellOrAction(sp, "spell"));
+                    }
+
+                    if (obj["equipped-spell"]) {
+                        const eq = obj["equipped-spell"];
+                        if (Array.isArray(eq)) eq.forEach(sp => processSpellOrAction(sp, "spell"));
+                        else processSpellOrAction(eq, "spell");
                     }
                 }
             }
-            if (!meta) return;
 
-            const tokenName = (item.text as any)?.plainText || item.name || "未命名";
-            const availableSpells: any[] = [];
-            if (meta.actions && Array.isArray(meta.actions)) {
-                meta.actions.forEach((act: any) => {
-                    if (act.embersId) availableSpells.push({ type: "action", name: act.name, embersId: act.embersId, variants: act.embersVariants || {} });
-                });
-            }
-            if (meta.spells && Array.isArray(meta.spells)) {
-                meta.spells.forEach((spell: any) => {
-                    if (spell.embersId) availableSpells.push({ type: "spell", name: spell.name, embersId: spell.embersId, variants: spell.embersVariants || {} });
-                });
-            }
             if (availableSpells.length > 0) {
                 setSelectedTokenName(tokenName);
                 setTokenSpells(availableSpells);
+            } else {
+                setTokenSpells([]);
+                setSelectedTokenName(null);
             }
         };
 
         OBR.player.getSelection().then(updateTokenSpells);
-        const unsub = OBR.player.onChange((player) => updateTokenSpells(player.selection || []));
-        return () => unsub();
+        
+        // 效能優化：加入 setTimeout 防抖，避免拖曳物件時以 60fps 瘋狂重算
+        let playerTimeoutId: number;
+        const unsubPlayer = OBR.player.onChange((player) => {
+            clearTimeout(playerTimeoutId);
+            playerTimeoutId = window.setTimeout(() => {
+                updateTokenSpells(player.selection || []);
+            }, 100);
+        });
+
+        let itemTimeoutId: number;
+        const unsubItems = OBR.scene.items.onChange(() => {
+            if (currentSelection?.length === 1) {
+                clearTimeout(itemTimeoutId);
+                itemTimeoutId = window.setTimeout(() => {
+                    updateTokenSpells(currentSelection);
+                }, 200);
+            }
+        });
+
+        return () => {
+            clearTimeout(playerTimeoutId);
+            clearTimeout(itemTimeoutId);
+            unsubPlayer();
+            unsubItems();
+        };
     }, [obr.ready]);
 
     useEffect(() => {

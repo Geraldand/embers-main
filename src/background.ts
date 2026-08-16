@@ -124,21 +124,36 @@ function setupScene() {
 
     // 👇 2. 依然保留這個監聽器 👇
     // 當 DM 在戰鬥中途拉了一隻「新怪物 Token」上場時，自動瞬間幫大家下載那隻怪物的專屬招式
+    const preloadedSpells = new Set<string>(); // 快取已預載的法術ID，避免拖曳時頻繁觸發
+    let preloadTimeoutId: number;
     const unsubscribeItems = OBR.scene.items.onChange((items) => {
-        items.forEach((item) => {
-            const equippedSpell = item.metadata["embers-custom/equipped-spell"] as string;
-            if (equippedSpell && (spellsRecord as Record<string, any>)[equippedSpell]) {
-                const spell = (spellsRecord as Record<string, any>)[equippedSpell];
-                if (spell.thumbnail) fetch(window.location.origin + `/Library/${spell.thumbnail}`, { mode: 'cors', cache: 'force-cache' }).catch(() => {});
-                if (Array.isArray(spell.blueprints)) {
-                    spell.blueprints.forEach((bp: any) => {
-                        if (bp.sound && typeof bp.sound === "string") {
-                            fetch(window.location.origin + `/sounds/${bp.sound}`, { mode: 'cors', cache: 'force-cache' }).catch(() => {});
+        clearTimeout(preloadTimeoutId);
+        preloadTimeoutId = window.setTimeout(() => {
+            items.forEach((item) => {
+                const equipped = item.metadata["embers-custom/equipped-spell"];
+                if (!equipped) return;
+
+                // 兼容單一法術字串或多法術陣列
+                const spellIds = Array.isArray(equipped) ? equipped : [equipped];
+
+                spellIds.forEach((spellId) => {
+                    if (typeof spellId !== "string" || preloadedSpells.has(spellId)) return;
+
+                    const spell = (spellsRecord as Record<string, any>)[spellId];
+                    if (spell) {
+                        preloadedSpells.add(spellId);
+                        if (spell.thumbnail) fetch(window.location.origin + `/Library/${spell.thumbnail}`, { mode: 'cors', cache: 'force-cache' }).catch(() => {});
+                        if (Array.isArray(spell.blueprints)) {
+                            spell.blueprints.forEach((bp: any) => {
+                                if (bp.sound && typeof bp.sound === "string") {
+                                    fetch(window.location.origin + `/sounds/${bp.sound}`, { mode: 'cors', cache: 'force-cache' }).catch(() => {});
+                                }
+                            });
                         }
-                    });
-                }
-            }
-        });
+                    }
+                });
+            });
+        }, 500); // 效能優化：加入 500ms 防抖，避免移動 Token 造成背景狂掃描
     });
 
     let interval: number | null = null;
@@ -188,6 +203,8 @@ function setupScene() {
     };
 }
 
+let unsubscribeMessageListener: (() => void) | null = null;
+
 function setup() {
     if (window.interactionRecord) {
         window.interactionRecord.clear();
@@ -196,7 +213,11 @@ function setup() {
         window.interactionRecord = new Map();
     }
 
-    setupMessageListener();
+    // 解決動畫播放兩次的問題：清除舊的廣播監聽器，避免重複註冊
+    if (unsubscribeMessageListener) {
+        unsubscribeMessageListener();
+    }
+    unsubscribeMessageListener = setupMessageListener() as unknown as (() => void);
 
     let unsubscribe: (() => void) | null = null;
     OBR.scene.isReady().then(ready => {

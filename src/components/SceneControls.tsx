@@ -91,21 +91,20 @@ function SpellDisplay({
         }
     }, [item.attachedTo]);
 
-    if (spell == undefined) {
-        return null;
-    }
+    // 即使找不到法術詳細定義，也顯示備用名稱，確保不會在列表中被隱藏
+    const displayName = spell?.name || spellID || item.name || "持續型法術";
 
     return (
         <div className="scene-spell-display-item">
             <p
                 title={`Spell name: ${
-                    spell.name
+                    displayName
                 }\nEffect ID: ${effectID}\nAttached to: ${
                     attachedToName ?? "nothing"
                 }\nCaster: ${caster.name}`}
             >
                 {" "}
-                {spell.name}
+                {displayName}
             </p>
             <div className="scene-spell-display-controls">
                 <div
@@ -243,12 +242,21 @@ export default function SceneControls() {
             return;
         }
 
-        const unmountGlobal = OBR.scene.items.onChange(setGlobalSpellItems);
+        // 效能優化：Active Effects 列表降低更新頻率 (每 500ms 最多更新一次)
+        let timeoutId: number;
+        const unmountGlobal = OBR.scene.items.onChange((items) => {
+            clearTimeout(timeoutId);
+            timeoutId = window.setTimeout(() => {
+                setGlobalSpellItems(items);
+            }, 500);
+        });
+
         OBR.scene.items.getItems().then((globalItems) => {
             setGlobalSpellItems(globalItems);
         });
 
         return () => {
+            clearTimeout(timeoutId);
             unmountGlobal();
         };
     }, [obr.ready, obr.sceneReady, setGlobalSpellItems]);

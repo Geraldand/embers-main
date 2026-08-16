@@ -248,7 +248,7 @@ async function setupToolActions(playerRole: "GM" | "PLAYER", playerID: string) {
                 value: undefined,
             }]
         },
-        shortcut: "Enter",
+        shortcut: "Space",
         onClick() {
             Promise.all([OBR.player.getMetadata(), getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.PLAYERS_CAN_CAST_SPELLS)]).then(([metadata, canCastSpells]) => {
                 if (!canCastSpells && playerRole !== "GM") {
@@ -328,7 +328,7 @@ async function setupTargetToolModes() {
                 ]
             }
         }],
-        shortcut: "A",
+        shortcut: "Shift+Q",
         onToolClick(_context, event) {
             if (!event.shiftKey && event.target && (event.target.layer == "CHARACTER" || event.target.layer == "DRAWING")) {
                 getSortedTargets().then(targets => {

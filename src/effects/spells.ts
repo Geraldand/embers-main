@@ -247,7 +247,8 @@ async function setFirstTarget(firstTargetIsCasterBP: BlueprintValue<boolean> | u
     }
 
     // Let's try to find the caster
-    const items = await OBR.scene.items.getItems();
+    // 效能優化：只拉取 IMAGE 且為角色或坐騎的 Token
+    const items = await OBR.scene.items.getItems(item => item.type === "IMAGE" && (item.layer === "CHARACTER" || item.layer === "MOUNT"));
     let match: Item|undefined = undefined;
     let matchStrength = 0;
 
