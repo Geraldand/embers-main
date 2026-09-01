@@ -1,63 +1,19 @@
-import "./SpellBook.css";
-
 import { APP_KEY, ASSET_LOCATION } from "../config";
-import {
-    Accordion,
-    AccordionDetails,
-    AccordionSummary,
-    Box,
-    Button,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogTitle,
-    Fade,
-    FormControl,
-    IconButton,
-    InputLabel,
-    MenuItem,
-    Select,
-    TextField,
-    Tooltip,
-    Typography,
-} from "@mui/material";
-import {
-    FaCaretDown,
-    FaCaretUp,
-    FaCirclePlus,
-    FaDownload,
-    FaFloppyDisk,
-    FaPencil,
-    FaTrash,
-    FaUpload,
-} from "react-icons/fa6";
-import OBR, { Theme } from "@owlbear-rodeo/sdk";
+import { FaCaretDown, FaCaretUp, FaCirclePlus, FaDownload, FaFloppyDisk, FaPencil, FaTrash, FaUpload, FaGear } from "react-icons/fa6";
+import OBR from "@owlbear-rodeo/sdk";
 import { downloadFileFromString, loadJSONFile } from "../utils";
 import { getAllSpellNames, getSpell, spellIDs } from "../effects/spells";
-import { setSelectedSpell, toolID } from "../effectsTool";
+import { toolID } from "../effectsTool";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { Spell } from "../types/spells";
+import { SpellInstance } from "../types/spells";
 import { useOBR } from "../react-obr/providers";
+import SpellDetails from "./SpellDetails";
+import Settings from "./Settings";
+import { safeJsonParse } from "../utils";
 
-type ModalType =
-    | "create-spell-group"
-    | "add-spell"
-    | "delete-spell-group"
-    | "delete-spell"
-    | "change-group-name";
+type ModalType = "create-spell-group" | "add-spell" | "delete-spell-group" | "change-group-name";
 export const playerMetadataSpellbookKey = `${APP_KEY}/spellbook`;
-
-function verifyGroups(json: unknown): Record<string, string[]> | null {
-    if (typeof json !== "object" || Array.isArray(json) || json == null) return null;
-    for (const [key, value] of Object.entries(json)) {
-        if (typeof key !== "string" || !Array.isArray(value)) return null;
-        for (const arrayValue of value) {
-            if (typeof arrayValue != "string") return null;
-        }
-    }
-    return json as Record<string, string[]>;
-}
 
 function playClickSound() {
     try { const audio = new Audio('/click.mp3'); audio.volume = 0.15; audio.play().catch(() => { }); } catch (e) { }
@@ -65,64 +21,115 @@ function playClickSound() {
 
 export default function SpellBook() {
     const obr = useOBR();
-    const [groups, _setGroups] = useState<Record<string, string[]>>({});
+    const [groups, _setGroups] = useState<Record<string, SpellInstance[]>>({});
     const [modalOpened, setModalOpened] = useState<ModalType | null>(null);
+    const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+
+    const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+    const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+    const [selectedInstance, setSelectedInstance] = useState<{ groupName: string, instance: SpellInstance } | null>(null);
+
     const [groupName, setGroupName] = useState<string>("");
     const [newGroupName, setNewGroupName] = useState<string>("");
     const [selectedSpellID, setSelectedSpellID] = useState<string>("");
     const [allSpellIDs, setAllSpellIDs] = useState<string[]>(spellIDs);
     const [editing, setEditing] = useState(false);
     const [isGM, setIsGM] = useState(false);
-    const [theme, setTheme] = useState<Theme>();
-    const mainDiv = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // 👑 儲存當前 Token 的法術資料
     const [tokenSpells, setTokenSpells] = useState<any[]>([]);
     const [selectedTokenName, setSelectedTokenName] = useState<string | null>(null);
 
-    // -----------------------------------------------------
-    // 💡 1. 所有的 useCallback 與事件處理函式必須在這裡定義
-    // -----------------------------------------------------
-    const setGroups = useCallback((value: Record<string, string[]> | null) => {
+    // ======== 新增：Token 專用的過濾狀態 ========
+    const [tokenTab, setTokenTab] = useState<"action" | "spell">("action");
+    const [actionFilter, setActionFilter] = useState<string>("all");
+    const [spellFilter, setSpellFilter] = useState<string>("all");
+    // ============================================
+
+    const verifyAndMigrateGroups = useCallback((json: unknown): Record<string, SpellInstance[]> | null => {
+        if (typeof json !== "object" || Array.isArray(json) || json == null) return null;
+        const migrated: Record<string, SpellInstance[]> = {};
+
+        for (const [key, value] of Object.entries(json)) {
+            if (typeof key !== "string" || !Array.isArray(value)) return null;
+            migrated[key] = value.map((item: any) => {
+                if (typeof item === "string") {
+                    const oldParamsStr = localStorage.getItem(`${APP_KEY}/spell-parameters/${item}`);
+                    const parameters = safeJsonParse<Record<string, any>>(oldParamsStr, {});
+                    return {
+                        instanceId: `${item}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+                        baseSpellId: item,
+                        parameters
+                    } as SpellInstance;
+                }
+                if (typeof item === "object" && item !== null && "instanceId" in item && "baseSpellId" in item) {
+                    return item as SpellInstance;
+                }
+                return null;
+            }).filter(Boolean) as SpellInstance[];
+        }
+        return migrated;
+    }, []);
+
+    const setGroups = useCallback((value: Record<string, SpellInstance[]> | null) => {
         if (value == null) {
             OBR.notification.show("無效的法術書 JSON", "ERROR");
             return;
         }
         localStorage.setItem(`${playerMetadataSpellbookKey}/${OBR.room.id}`, JSON.stringify(value));
         _setGroups(value);
-        OBR.notification.show("成功匯入法術書", "SUCCESS");
     }, []);
 
     const closeModal = () => setModalOpened(null);
+    const toggleGroup = (name: string) => setExpandedGroups(prev => ({ ...prev, [name]: prev[name] === undefined ? false : !prev[name] }));
 
-    const confirmGroupName = useCallback((groupName: string) => {
-        if (groupName.length == 0 || Object.keys(groups).includes(groupName)) return;
-        setGroups({ ...groups, [groupName]: [] });
+    const confirmGroupName = useCallback((gName: string) => {
+        if (gName.length == 0 || Object.keys(groups).includes(gName)) return;
+        setGroups({ ...groups, [gName]: [] });
         closeModal();
     }, [groups, setGroups]);
 
-    const editGroupName = useCallback((groupName: string, newGroupName: string) => {
-        if (newGroupName.length == 0 || Object.keys(groups).includes(newGroupName)) return;
+    const editGroupName = useCallback((oldName: string, newName: string) => {
+        if (newName.length == 0 || Object.keys(groups).includes(newName)) return;
         setGroups({
-            ...Object.fromEntries(Object.entries(groups).filter(([oldGroupName]) => oldGroupName != groupName)),
-            [newGroupName]: groups[groupName] ?? [],
+            ...Object.fromEntries(Object.entries(groups).filter(([k]) => k != oldName)),
+            [newName]: groups[oldName] ?? [],
         });
         closeModal();
     }, [groups, setGroups]);
 
-    const deleteSpellGroup = useCallback((groupName: string) => {
-        setGroups(Object.fromEntries(Object.entries(groups).filter(([oldGroupName]) => oldGroupName != groupName)));
+    const deleteSpellGroup = useCallback((gName: string) => {
+        setGroups(Object.fromEntries(Object.entries(groups).filter(([k]) => k != gName)));
         closeModal();
     }, [groups, setGroups]);
 
-    const addSpellToGroup = useCallback((groupName: string, spellID: string) => {
-        setGroups({ ...groups, [groupName]: [...(groups[groupName] ?? []), spellID] });
+    const addSpellToGroup = useCallback((gName: string, baseId: string) => {
+        const baseSpell = getSpell(baseId, isGM);
+        const defaultParams: Record<string, any> = {};
+        if (baseSpell?.parameters) {
+            baseSpell.parameters.forEach(p => {
+                if (p.defaultValue !== undefined) defaultParams[p.id] = p.defaultValue;
+            });
+        }
+        const newInstance: SpellInstance = {
+            instanceId: `${baseId}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`,
+            baseSpellId: baseId,
+            customName: baseSpell?.name,
+            parameters: defaultParams
+        };
+        setGroups({ ...groups, [gName]: [...(groups[gName] ?? []), newInstance] });
         closeModal();
+    }, [groups, setGroups, isGM]);
+
+    const updateSpellInstance = useCallback((gName: string, updatedInstance: SpellInstance) => {
+        setGroups({
+            ...groups,
+            [gName]: groups[gName].map(s => s.instanceId === updatedInstance.instanceId ? updatedInstance : s)
+        });
     }, [groups, setGroups]);
 
-    const deleteSpellFromGroup = useCallback((groupName: string, spellID: string) => {
-        setGroups({ ...groups, [groupName]: [...(groups[groupName] ?? []).filter((spell) => spellID != spell)] });
+    const deleteSpellFromGroup = useCallback((gName: string, instanceId: string) => {
+        setGroups({ ...groups, [gName]: groups[gName].filter(s => s.instanceId !== instanceId) });
     }, [groups, setGroups]);
 
     const moveSpellGroup = useCallback((oldIndex: number, newIndex: number) => {
@@ -133,33 +140,36 @@ export default function SpellBook() {
         setGroups(Object.fromEntries(newEntries));
     }, [groups, setGroups]);
 
-    const castSpell = useCallback((spellID: string) => {
+    const openSpellDetails = useCallback((gName: string, instance: SpellInstance) => {
         playClickSound();
-        OBR.tool.activateTool(toolID);
-        setSelectedSpell(spellID);
+        setSelectedInstance({ groupName: gName, instance });
+        setDetailsModalOpen(true);
+    }, []);
+
+    const castSpell = useCallback(async (instance: SpellInstance) => {
+        playClickSound();
+        await OBR.player.setMetadata({
+            [`${APP_KEY}/selected-spell`]: instance.baseSpellId,
+            [`${APP_KEY}/spell-parameters`]: instance.parameters || {}
+        });
+        await OBR.tool.activateTool(toolID);
     }, []);
 
     const castTokenSpell = async (spellData: any) => {
-        playClickSound(); // 播放音效
-        
-        // 🚀 修正：與 Bubbles 統一，將變體完整打包傳入 spell-parameters
+        playClickSound();
         await OBR.player.setMetadata({
             [`${APP_KEY}/selected-spell`]: spellData.embersId,
             [`${APP_KEY}/spell-parameters`]: spellData.variants || {}
         });
-        
         await OBR.tool.activateTool(toolID);
     };
 
     const clearTokenSpellbook = () => {
-        playClickSound(); // 播放音效
+        playClickSound();
         setSelectedTokenName(null);
         setTokenSpells([]);
     };
 
-    // -----------------------------------------------------
-    // 💡 2. 所有的 useEffect 必須在這裡定義
-    // -----------------------------------------------------
     useEffect(() => {
         if (!obr.ready) return;
 
@@ -173,7 +183,7 @@ export default function SpellBook() {
                 return;
             }
 
-            const items = await OBR.scene.items.getItems([selection[0]]);
+            const items = await OBR.scene.items.getItems([currentSelection[0]]);
             if (items.length === 0) {
                 setTokenSpells([]);
                 setSelectedTokenName(null);
@@ -181,84 +191,92 @@ export default function SpellBook() {
             }
 
             const item = items[0];
-            const tokenName = (item.text as any)?.plainText || item.name || "未命名 Token";
-            const availableSpells: any[] = [];
-            const addedSpellKeys = new Set<string>();
+            const tokenName = (item as any).text?.plainText || item.name || "未命名 Token";
+            
+            // 🌟 修正點：使用 Map 透過 ID 去重，確保新資料覆寫舊陣列資料
+            const availableSpellsMap = new Map<string, any>();
 
             const processSpellOrAction = (entry: any, defaultType: "spell" | "action") => {
                 if (!entry) return;
-                
-                // 嚴格過濾：僅接受字串（純特效 ID）或明確指定 embersId 的物件
-                let embersId = null;
-                if (typeof entry === "string") {
-                    embersId = entry;
-                } else if (typeof entry === "object" && entry.embersId) {
-                    embersId = entry.embersId;
-                }
+                let embersId = entry.embersId || (typeof entry === "string" ? entry : null);
 
-                // 若不具備特效 ID 或為空字串，直接略過，不加入法術書
-                if (!embersId || typeof embersId !== "string" || embersId.trim() === "") {
-                    return;
-                }
+                if (!embersId || typeof embersId !== "string" || embersId.trim() === "") return;
 
-                const name = entry.name || entry.title || entry.label || embersId || "未知法術";
+                const spellDef = getSpell(embersId, isGM);
+                if (!spellDef) return;
+
+                const name = entry.name || entry.title || entry.label || spellDef.name || embersId;
                 const variants = entry.embersVariants || entry.variants || {};
-                const type = entry.type || defaultType;
+                
+                // ======== 新增分類萃取邏輯 ========
+                let baseType = defaultType;
+                let subType = "other";
+                let level = 0;
 
-                const uniqueKey = `${type}-${embersId}-${name}`;
-                if (!addedSpellKeys.has(uniqueKey)) {
-                    addedSpellKeys.add(uniqueKey);
-                    availableSpells.push({
-                        type,
-                        name,
-                        embersId,
-                        variants
-                    });
+                if (entry.type && ["action", "bonus_action", "reaction", "free_action", "feature"].includes(entry.type)) {
+                    baseType = "action";
+                    subType = entry.type;
+                } else {
+                    baseType = "spell";
+                    level = entry.level !== undefined ? Number(entry.level) : (spellDef.level || 0);
+                    subType = level.toString();
                 }
+                // ===================================
+
+                // 優先使用 entry.id，確保精準覆寫舊資料
+                const uniqueKey = entry.id || `${baseType}-${embersId}-${name}`;
+                
+                availableSpellsMap.set(uniqueKey, { 
+                    type: baseType, 
+                    subType, 
+                    level, 
+                    name, 
+                    embersId, 
+                    variants 
+                });
             };
 
             for (const [key, rawValue] of Object.entries(item.metadata || {})) {
+                if (rawValue === undefined || rawValue === null) continue; // 🌟 修正點：直接過濾已刪除或為空的欄位
+
                 let val = rawValue;
                 if (typeof val === "string") {
-                    // 效能優化：僅在字串看起來像 JSON 時才進行解析，避免頻繁的 parse error
                     if (val.startsWith("{") || val.startsWith("[")) {
-                        try {
-                            val = JSON.parse(val);
-                        } catch (e) {
-                            // 忽略
-                        }
+                        try { val = JSON.parse(val); } catch (e) { }
                     } else if (key.includes("equipped-spell") || key.includes("spell")) {
-                        processSpellOrAction(val, "spell");
+                        processSpellOrAction({ embersId: val }, "spell");
                     }
                 }
 
                 if (Array.isArray(val)) {
-                    val.forEach(itemEntry => processSpellOrAction(itemEntry, "spell"));
+                    val.forEach(itemEntry => processSpellOrAction(itemEntry, key.includes("action") ? "action" : "spell"));
                 } else if (val && typeof val === "object") {
                     const obj = val as Record<string, any>;
-                    if (Array.isArray(obj.actions)) {
-                        obj.actions.forEach((act: any) => processSpellOrAction(act, "action"));
-                    } else if (obj.actions && typeof obj.actions === "object") {
-                        Object.values(obj.actions).forEach((act: any) => processSpellOrAction(act, "action"));
-                    }
 
-                    if (Array.isArray(obj.spells)) {
-                        obj.spells.forEach((sp: any) => processSpellOrAction(sp, "spell"));
-                    } else if (obj.spells && typeof obj.spells === "object") {
-                        Object.values(obj.spells).forEach((sp: any) => processSpellOrAction(sp, "spell"));
-                    }
+                    if (Array.isArray(obj.actions)) obj.actions.forEach((act: any) => processSpellOrAction(act, "action"));
+                    else if (obj.actions && typeof obj.actions === "object") Object.values(obj.actions).forEach((act: any) => processSpellOrAction(act, "action"));
+
+                    if (Array.isArray(obj.spells)) obj.spells.forEach((sp: any) => processSpellOrAction(sp, "spell"));
+                    else if (obj.spells && typeof obj.spells === "object") Object.values(obj.spells).forEach((sp: any) => processSpellOrAction(sp, "spell"));
 
                     if (obj["equipped-spell"]) {
                         const eq = obj["equipped-spell"];
                         if (Array.isArray(eq)) eq.forEach(sp => processSpellOrAction(sp, "spell"));
-                        else processSpellOrAction(eq, "spell");
+                        else processSpellOrAction({ embersId: eq }, "spell");
+                    }
+
+                    if (obj.embersId) {
+                        const defaultType = key.includes("action") ? "action" : "spell";
+                        processSpellOrAction(obj, defaultType);
                     }
                 }
             }
 
-            if (availableSpells.length > 0) {
+            const finalSpells = Array.from(availableSpellsMap.values());
+
+            if (finalSpells.length > 0) {
                 setSelectedTokenName(tokenName);
-                setTokenSpells(availableSpells);
+                setTokenSpells(finalSpells);
             } else {
                 setTokenSpells([]);
                 setSelectedTokenName(null);
@@ -266,46 +284,31 @@ export default function SpellBook() {
         };
 
         OBR.player.getSelection().then(updateTokenSpells);
-        
-        // 效能優化：加入 setTimeout 防抖，避免拖曳物件時以 60fps 瘋狂重算
+
         let playerTimeoutId: number;
         const unsubPlayer = OBR.player.onChange((player) => {
             clearTimeout(playerTimeoutId);
-            playerTimeoutId = window.setTimeout(() => {
-                updateTokenSpells(player.selection || []);
-            }, 100);
+            playerTimeoutId = window.setTimeout(() => updateTokenSpells(player.selection || []), 100);
         });
 
         let itemTimeoutId: number;
         const unsubItems = OBR.scene.items.onChange(() => {
             if (currentSelection?.length === 1) {
                 clearTimeout(itemTimeoutId);
-                itemTimeoutId = window.setTimeout(() => {
-                    updateTokenSpells(currentSelection);
-                }, 200);
+                itemTimeoutId = window.setTimeout(() => updateTokenSpells(currentSelection), 200);
             }
         });
 
-        return () => {
-            clearTimeout(playerTimeoutId);
-            clearTimeout(itemTimeoutId);
-            unsubPlayer();
-            unsubItems();
-        };
-    }, [obr.ready]);
-
-    useEffect(() => {
-        if (!obr.ready) return;
-        OBR.theme.getTheme().then(theme => setTheme(theme));
-        return OBR.theme.onChange(theme => setTheme(theme));
-    }, [obr.ready]);
+        return () => { clearTimeout(playerTimeoutId); clearTimeout(itemTimeoutId); unsubPlayer(); unsubItems(); };
+    }, [obr.ready, isGM]);
 
     useEffect(() => {
         if (!obr.ready) return;
         const spellbookJSON = localStorage.getItem(`${playerMetadataSpellbookKey}/${OBR.room.id}`);
-        const spellBook = JSON.parse(spellbookJSON ?? "{}");
-        _setGroups(spellBook);
-    }, [obr.ready, setGroups]);
+        const parsedJSON = safeJsonParse<any>(spellbookJSON, {});
+        const migrated = verifyAndMigrateGroups(parsedJSON);
+        if (migrated) _setGroups(migrated);
+    }, [obr.ready, verifyAndMigrateGroups]);
 
     useEffect(() => {
         if (!obr.ready || !obr.player?.role) return;
@@ -314,59 +317,76 @@ export default function SpellBook() {
 
     useEffect(() => {
         if (!obr.ready || !obr.sceneReady) return;
-        getAllSpellNames().then((names) => setAllSpellIDs(names));
-        return OBR.scene.onMetadataChange(() => {
-            getAllSpellNames().then((names) => setAllSpellIDs(names));
-        });
+        getAllSpellNames().then(setAllSpellIDs);
+        return OBR.scene.onMetadataChange(() => getAllSpellNames().then(setAllSpellIDs));
     }, [obr.ready, obr.sceneReady]);
 
-    // -----------------------------------------------------
-    // 💡 3. 最後才能是包含 return 的條件渲染與 JSX 輸出
-    // -----------------------------------------------------
-
-    // 🌟 優先渲染 Token 專屬法術面板
     if (tokenSpells.length > 0) {
+        // ======== 實作動態篩選 ========
+        const displayedSpells = tokenSpells.filter(s => {
+            if (s.type !== tokenTab) return false;
+            if (tokenTab === "action" && actionFilter !== "all") return s.subType === actionFilter;
+            if (tokenTab === "spell" && spellFilter !== "all") return s.subType === spellFilter;
+            return true;
+        });
+
         return (
-            <div ref={mainDiv} className="spellbook-container">
-                <Box className="spellbook-header" sx={{ padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Typography variant="h6" className="title spellbook-options" sx={{ color: "#ffffff", fontWeight: "bold", textShadow: "0 0 8px rgba(255,255,255,0.3)", fontSize: "1rem" }}>
+            <div className="spellbook-container px-2">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-bold text-white truncate">
                         {selectedTokenName} 的動作與法術
-                    </Typography>
-                    <Button 
-                        size="small" 
+                    </h3>
+                    <button
                         onClick={clearTokenSpellbook}
-                        sx={{ color: '#9ca3af', borderColor: '#4b5563', fontSize: '0.75rem', borderRadius: '20px', textTransform: 'none', '&:hover': { color: '#ffffff', borderColor: '#9ca3af' } }}
-                        variant="outlined"
+                        className="px-3 py-1 text-[11px] font-bold rounded-full border border-panel-inactive text-gray-300 hover:bg-panel-inactive transition-colors outline-none shrink-0"
                     >
-                        ← 返回主法術書
-                    </Button>
-                </Box>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: '16px', padding: '12px' }}>
-                    {tokenSpells.map((s, idx) => {
+                        返回主法術書
+                    </button>
+                </div>
+
+                {/* 動作與法術的大分類 Tab */}
+                <div className="flex bg-panel-inactive p-1 rounded-lg mb-3 shadow-sm">
+                    <button onClick={() => { playClickSound(); setTokenTab("action"); }} className={`flex-1 text-[13px] font-bold py-1.5 rounded-md transition-all outline-none ${tokenTab === "action" ? "bg-panel-active text-white shadow-sm" : "text-gray-400 hover:text-white"}`}>動作</button>
+                    <button onClick={() => { playClickSound(); setTokenTab("spell"); }} className={`flex-1 text-[13px] font-bold py-1.5 rounded-md transition-all outline-none ${tokenTab === "spell" ? "bg-panel-active text-white shadow-sm" : "text-gray-400 hover:text-white"}`}>法術</button>
+                </div>
+
+                {/* 子分類下拉選單 */}
+                <div className="mb-4">
+                    {tokenTab === "action" ? (
+                        <select value={actionFilter} onChange={(e) => setActionFilter(e.target.value)} className="w-full bg-panel-base text-white text-xs font-bold rounded-xl p-2.5 outline-none border border-transparent focus:border-panel-active shadow-inner appearance-none cursor-pointer">
+                            <option value="all">所有動作</option>
+                            <option value="action">主要動作</option>
+                            <option value="bonus_action">附贈動作</option>
+                            <option value="reaction">反應</option>
+                            <option value="free_action">自由動作</option>
+                            <option value="feature">職業特性</option>
+                        </select>
+                    ) : (
+                        <select value={spellFilter} onChange={(e) => setSpellFilter(e.target.value)} className="w-full bg-panel-base text-white text-xs font-bold rounded-xl p-2.5 outline-none border border-transparent focus:border-panel-active shadow-inner appearance-none cursor-pointer">
+                            <option value="all">所有環數</option>
+                            <option value="0">戲法 (0環)</option>
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(l => <option key={l} value={l.toString()}>第 {l} 環</option>)}
+                        </select>
+                    )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                    {displayedSpells.length === 0 && (
+                        <div className="col-span-2 text-center text-xs font-bold text-gray-500 py-6">
+                            此分類下尚無任何項目。
+                        </div>
+                    )}
+                    {displayedSpells.map((s, idx) => {
                         const spellDef = getSpell(s.embersId, isGM);
                         const thumbnail = spellDef?.thumbnail ? `${ASSET_LOCATION}/${spellDef.thumbnail}` : `${ASSET_LOCATION}/default.png`;
                         return (
-                            <div 
-                                key={idx} 
+                            <div
+                                key={idx}
                                 onClick={() => castTokenSpell(s)}
-                                style={{ 
-                                    cursor: 'pointer', borderRadius: '12px', overflow: 'hidden', 
-                                    border: s.type === "action" ? "2px solid #ef4444" : "2px solid #3b82f6",
-                                    backgroundColor: '#1e1e2e', display: 'flex', flexDirection: 'column',
-                                    transition: 'transform 0.15s ease-out, box-shadow 0.15s ease-out',
-                                    boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
-                                }}
-                                onMouseEnter={e => {
-                                    e.currentTarget.style.transform = 'scale(1.08)';
-                                    e.currentTarget.style.boxShadow = '0 10px 15px rgba(0,0,0,0.5)';
-                                }}
-                                onMouseLeave={e => {
-                                    e.currentTarget.style.transform = 'scale(1)';
-                                    e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
-                                }}
+                                className={`cursor-pointer rounded-2xl overflow-hidden flex flex-col transition-all bg-panel-content shadow-sm hover:shadow-md hover:scale-[1.03] border border-transparent ${s.type === "action" ? "hover:border-red-500/50" : "hover:border-panel-active/50"}`}
                             >
-                                <img src={thumbnail} alt={s.name} style={{ width: '100%', height: '70px', objectFit: 'cover' }} />
-                                <div style={{ padding: '8px 6px', fontSize: '13px', fontWeight: 'bold', color: '#ffffff', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', backgroundColor: 'rgba(0,0,0,0.2)' }}>
+                                <img src={thumbnail} alt={s.name} className="w-full h-16 object-cover" />
+                                <div className="p-2 text-xs font-bold text-center text-white truncate bg-panel-content">
                                     {s.name}
                                 </div>
                             </div>
@@ -377,179 +397,232 @@ export default function SpellBook() {
         );
     }
 
-    // 🌟 全域預設法術書介面
     return (
-        <div ref={mainDiv} className="spellbook-container">
-            <Box className="spellbook-header">
+        <div className="spellbook-container px-2">
+            <div className="flex items-center justify-between mb-4">
                 <input
                     ref={fileInputRef}
                     style={{ display: "none" }}
                     accept=".json"
                     type="file"
-                    onChange={(event) => loadJSONFile(event, (json) => setGroups(verifyGroups(json)))}
+                    onChange={(event) => loadJSONFile(event, (json) => {
+                        const migrated = verifyAndMigrateGroups(json);
+                        if (migrated) setGroups(migrated);
+                    })}
                 />
-                <Typography mb={"0.5rem"} variant="h6" color="text.primary" className="title spellbook-options">
-                    <span>法術書</span>
-                    {editing && <>
-                        <Tooltip title="新增法術組">
-                            <IconButton size="small" sx={{ ml: 1 }} onClick={() => { setGroupName(""); setModalOpened("create-spell-group"); }}>
-                                <FaCirclePlus />
-                            </IconButton>
-                        </Tooltip>
-                        <Tooltip title="匯入法術書">
-                            <IconButton size="small" sx={{ ml: 1 }} onClick={() => fileInputRef.current?.click()}>
-                                <FaUpload />
-                            </IconButton>
-                        </Tooltip>
-                        <Tooltip title="下載法術書">
-                            <IconButton size="small" sx={{ ml: 1 }} onClick={() => downloadFileFromString(JSON.stringify(groups), "spellbook.json")}>
-                                <FaDownload />
-                            </IconButton>
-                        </Tooltip>
-                    </>}
-                </Typography>
-                {editing ? (
-                    <Tooltip title="儲存變更">
-                        <IconButton className="clickable" size="small" onClick={() => setEditing(false)}><FaFloppyDisk /></IconButton>
-                    </Tooltip>
-                ) : (
-                    <Tooltip title="編輯法術書">
-                        <IconButton className="clickable" size="small" onClick={() => setEditing(true)}><FaPencil /></IconButton>
-                    </Tooltip>
-                )}
-            </Box>
-            {Object.entries(groups).map(([groupName, spells], index) => (
-                <Accordion variant="outlined" defaultExpanded key={index}>
-                    <AccordionSummary sx={{ "&.Mui-expanded": { mt: "0.5rem", minHeight: 0 }, "& > .MuiAccordionSummary-content.Mui-expanded": { margin: 0 } }} className="subtitle spellbook-group">
-                        <Box display="flex" alignItems="center" flexWrap="wrap">
-                            <Typography variant="subtitle1" color="text.primary">{groupName}</Typography>
-                            {editing && (
-                                <>
-                                    <Tooltip title="新增法術至此組">
-                                        <IconButton component="div" size="small" sx={{ ml: 1 }} onClick={(event) => { event.stopPropagation(); setGroupName(groupName); setModalOpened("add-spell"); }}>
-                                            <FaCirclePlus />
-                                        </IconButton>
-                                    </Tooltip>
-                                    <Tooltip title="修改此組名稱">
-                                        <IconButton component="div" size="small" sx={{ ml: 1 }} onClick={(event) => { event.stopPropagation(); setGroupName(groupName); setNewGroupName(groupName); setModalOpened("change-group-name"); }}>
-                                            <FaPencil />
-                                        </IconButton>
-                                    </Tooltip>
-                                    <Tooltip title="刪除此法術組">
-                                        <IconButton component="div" size="small" sx={{ ml: 1 }} onClick={(event) => { event.stopPropagation(); if (groups[groupName] === undefined || groups[groupName].length === 0) { deleteSpellGroup(groupName); } else { setGroupName(groupName); setModalOpened("delete-spell-group"); } }}>
-                                            <FaTrash />
-                                        </IconButton>
-                                    </Tooltip>
-                                    <Box className="up-down-arrows" display="flex" alignItems="center">
-                                        {index !== 0 && (
-                                            <Tooltip title="向上移動">
-                                                <IconButton component="div" size="small" sx={{ ml: 1 }} onClick={(event) => { event.stopPropagation(); moveSpellGroup(index, index - 1); }}>
-                                                    <FaCaretUp />
-                                                </IconButton>
-                                            </Tooltip>
-                                        )}
-                                        {index !== Object.keys(groups).length - 1 && (
-                                            <Tooltip title="向下移動">
-                                                <IconButton component="div" size="small" sx={{ ml: 1 }} onClick={(event) => { event.stopPropagation(); moveSpellGroup(index, index + 1); }}>
-                                                    <FaCaretDown />
-                                                </IconButton>
-                                            </Tooltip>
-                                        )}
-                                    </Box>
-                                </>
+                <h3 className="text-base font-black tracking-tight text-white">法術書</h3>
+                <div className="flex items-center gap-1 bg-panel-content rounded-full p-1 shadow-sm">
+                    {editing && (
+                        <>
+                            <button title="新增法術組" onClick={() => { setGroupName(""); setModalOpened("create-spell-group"); }} className="p-1.5 rounded-full text-gray-400 hover:text-panel-active transition-colors outline-none">
+                                <FaCirclePlus className="w-3.5 h-3.5" />
+                            </button>
+                            <button title="匯入法術書" onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded-full text-gray-400 hover:text-panel-active transition-colors outline-none">
+                                <FaUpload className="w-3.5 h-3.5" />
+                            </button>
+                            <button title="下載法術書" onClick={() => downloadFileFromString(JSON.stringify(groups), "spellbook.json")} className="p-1.5 rounded-full text-gray-400 hover:text-panel-active transition-colors outline-none">
+                                <FaDownload className="w-3.5 h-3.5" />
+                            </button>
+                        </>
+                    )}
+                    <button title={editing ? "儲存變更" : "編輯法術書"} onClick={() => { playClickSound(); setEditing(!editing); }} className={`p-1.5 rounded-full transition-colors outline-none ${editing ? "bg-panel-active text-white shadow-sm" : "text-gray-400 hover:text-white"}`}>
+                        {editing ? <FaFloppyDisk className="w-3.5 h-3.5" /> : <FaPencil className="w-3.5 h-3.5" />}
+                    </button>
+                    <button title="開啟設定" onClick={() => { playClickSound(); setSettingsModalOpen(true); }} className="p-1.5 rounded-full text-gray-400 hover:text-white transition-colors outline-none">
+                        <FaGear className="w-3.5 h-3.5" />
+                    </button>
+                </div>
+            </div>
+
+            <div className="flex flex-col gap-3">
+                {Object.entries(groups).map(([gName, spells], index) => {
+                    const isExpanded = expandedGroups[gName] !== false;
+                    return (
+                        <div key={index} className="flex flex-col bg-transparent">
+                            <div className="flex items-center justify-between w-full py-1 mb-1 cursor-pointer" onClick={() => toggleGroup(gName)}>
+                                <span className="font-bold text-sm text-gray-300">{gName}</span>
+                                <div className="flex items-center gap-2">
+                                    {editing && (
+                                        <div className="flex items-center gap-1">
+                                            <button title="新增法術至此組" onClick={(e) => { e.stopPropagation(); setGroupName(gName); setModalOpened("add-spell"); }} className="p-1 text-gray-400 hover:text-panel-active outline-none"><FaCirclePlus className="w-3 h-3" /></button>
+                                            <button title="修改此組名稱" onClick={(e) => { e.stopPropagation(); setGroupName(gName); setNewGroupName(gName); setModalOpened("change-group-name"); }} className="p-1 text-gray-400 hover:text-panel-active outline-none"><FaPencil className="w-3 h-3" /></button>
+                                            <button title="刪除此法術組" onClick={(e) => { e.stopPropagation(); if (spells.length === 0) { deleteSpellGroup(gName); } else { setGroupName(gName); setModalOpened("delete-spell-group"); } }} className="p-1 text-gray-400 hover:text-red-500 outline-none"><FaTrash className="w-3 h-3" /></button>
+                                            {index !== 0 && <button title="向上移動" onClick={(e) => { e.stopPropagation(); moveSpellGroup(index, index - 1); }} className="p-1 text-gray-400 hover:text-panel-active outline-none"><FaCaretUp className="w-3 h-3" /></button>}
+                                            {index !== Object.keys(groups).length - 1 && <button title="向下移動" onClick={(e) => { e.stopPropagation(); moveSpellGroup(index, index + 1); }} className="p-1 text-gray-400 hover:text-panel-active outline-none"><FaCaretDown className="w-3 h-3" /></button>}
+                                        </div>
+                                    )}
+                                    {isExpanded ? <FaCaretUp className="text-gray-500 w-3 h-3" /> : <FaCaretDown className="text-gray-500 w-3 h-3" />}
+                                </div>
+                            </div>
+
+                            {isExpanded && (
+                                <div className="grid grid-cols-2 gap-3 mt-1">
+                                    {spells.map((spellInstance) => {
+                                        const spellDef = getSpell(spellInstance.baseSpellId, isGM);
+                                        if (!spellDef) return null;
+                                        const displayName = spellInstance.customName || spellDef.name || spellInstance.baseSpellId;
+
+                                        return (
+                                            <div
+                                                key={spellInstance.instanceId}
+                                                className="relative flex flex-col p-2.5 rounded-2xl bg-panel-content hover:bg-panel-inactive cursor-pointer shadow-sm border border-transparent hover:border-panel-active transition-colors group"
+                                                onClick={() => editing ? null : castSpell(spellInstance)}
+                                            >
+                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                    <img
+                                                        className="w-7 h-7 object-contain drop-shadow-sm shrink-0"
+                                                        src={`${ASSET_LOCATION}/${spellDef.thumbnail}`}
+                                                        alt=""
+                                                    />
+                                                    <span className="text-[13px] font-bold text-white truncate">
+                                                        {displayName}
+                                                    </span>
+                                                </div>
+
+                                                <div className="absolute right-2 top-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    {!editing && (
+                                                        <button
+                                                            title="設定法術參數"
+                                                            className="p-1 text-gray-400 hover:text-white bg-panel-base rounded-full outline-none transition-colors shadow-sm"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                openSpellDetails(gName, spellInstance);
+                                                            }}
+                                                        >
+                                                            <FaGear className="w-3 h-3" />
+                                                        </button>
+                                                    )}
+                                                    {editing && (
+                                                        <button
+                                                            title="移除此法術"
+                                                            className="p-1 text-gray-400 hover:text-red-500 bg-panel-base rounded-full outline-none transition-colors shadow-sm"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                deleteSpellFromGroup(gName, spellInstance.instanceId);
+                                                            }}
+                                                        >
+                                                            <FaTrash className="w-3 h-3" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             )}
-                        </Box>
-                    </AccordionSummary>
-                    <AccordionDetails>
-                        <ul style={{ margin: 0 }} className="spellgroup-list">
-                            {spells
-                                .map((spellID) => [spellID, getSpell(spellID, isGM)] as [string, Spell])
-                                .filter(spell => spell[1] !== undefined)
-                                .sort((a, b) => a[1].name?.localeCompare?.(b[1].name ?? "") ?? 0)
-                                .map(([spellID, spell], index) => (
-                                    <li key={index} className={editing ? "" : "clickable"} onClick={() => (editing ? null : castSpell(spellID))}>
-                                        <div className="spellgroup-item-header">
-                                            <img className="spellgroup-thumbnail" src={`${ASSET_LOCATION}/${spell.thumbnail}`} />
-                                            <p>{spell.name}</p>
-                                        </div>
-                                        <div className="spellgroup-item-actions">
-                                            {editing && (
-                                                <Tooltip title="移除此法術">
-                                                    <IconButton size="small" sx={{ ml: 1 }} onClick={() => deleteSpellFromGroup(groupName, spellID)}>
-                                                        <FaTrash />
-                                                    </IconButton>
-                                                </Tooltip>
-                                            )}
-                                        </div>
-                                    </li>
-                                ))}
-                        </ul>
-                    </AccordionDetails>
-                </Accordion>
-            ))}
+                        </div>
+                    );
+                })}
+            </div>
 
             {Object.keys(groups).length < 1 && (
-                <Typography variant="body2" textAlign={"center"}>
-                    未找到法術組。<br />
-                    <span className="underlined clickable" onClick={() => setModalOpened("create-spell-group")}>新增一個法術組。</span>
-                </Typography>
+                <div className="text-center mt-10">
+                    <span className="text-sm font-bold text-gray-500">未找到法術組。</span><br />
+                    <button className="text-xs font-bold text-panel-active hover:text-white mt-2 outline-none" onClick={() => setModalOpened("create-spell-group")}>新增一個法術組</button>
+                </div>
             )}
 
-            <Dialog open={modalOpened === "create-spell-group"} onClose={closeModal} slots={{ transition: Fade }} slotProps={{ transition: { timeout: 300 }, paper: { sx: { backgroundColor: theme?.background?.paper } } }} fullWidth maxWidth="sm">
-                <DialogTitle>建立新法術組</DialogTitle>
-                <DialogContent>
-                    <Typography variant="body1" gutterBottom>請輸入此法術組的名稱：</Typography>
-                    <TextField fullWidth autoFocus margin="dense" variant="outlined" value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder="法術組名稱" />
-                </DialogContent>
-                <DialogActions sx={{ justifyContent: "space-between", padding: "2rem" }}>
-                    <Button variant="outlined" color="inherit" onClick={closeModal}>取消</Button>
-                    <Button variant="contained" color="primary" onClick={() => confirmGroupName(groupName)}>確認</Button>
-                </DialogActions>
-            </Dialog>
+            {detailsModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="w-full max-w-[380px] max-h-[85vh] flex flex-col shadow-2xl rounded-[1.5rem] bg-panel-content overflow-hidden animate-in zoom-in-95 border border-panel-inactive">
+                        <div className="flex-1 overflow-y-auto p-4 scroll-smooth">
+                            <SpellDetails
+                                spellInstance={selectedInstance?.instance || null}
+                                isGM={isGM}
+                                onUpdate={(updatedInstance) => {
+                                    if (selectedInstance) {
+                                        updateSpellInstance(selectedInstance.groupName, updatedInstance);
+                                        setSelectedInstance({ ...selectedInstance, instance: updatedInstance });
+                                    }
+                                }}
+                            />
+                        </div>
+                        <div className="flex-none bg-panel-inactive/30 border-t border-panel-base p-3 flex justify-end gap-2 px-4">
+                            <button onClick={() => { playClickSound(); setDetailsModalOpen(false); }} className="px-4 py-1.5 rounded-full text-xs font-bold text-gray-400 hover:text-white transition-colors outline-none">
+                                關閉
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
-            <Dialog open={modalOpened === "change-group-name"} onClose={closeModal} slots={{ transition: Fade }} slotProps={{ transition: { timeout: 300 }, paper: { sx: { backgroundColor: theme?.background?.paper } } }} fullWidth maxWidth="sm">
-                <DialogTitle>編輯法術組名稱</DialogTitle>
-                <DialogContent>
-                    <Typography variant="body1" gutterBottom>請輸入此法術組的新名稱：</Typography>
-                    <TextField fullWidth autoFocus margin="dense" variant="outlined" value={newGroupName} onChange={(event) => setNewGroupName(event.target.value)} placeholder="法術組名稱" />
-                </DialogContent>
-                <DialogActions sx={{ justifyContent: "space-between", padding: "2rem" }}>
-                    <Button variant="outlined" color="inherit" onClick={closeModal}>取消</Button>
-                    <Button variant="contained" color="primary" onClick={() => editGroupName(groupName, newGroupName)}>確認</Button>
-                </DialogActions>
-            </Dialog>
+            {settingsModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="w-full max-w-[380px] max-h-[85vh] flex flex-col shadow-2xl rounded-[1.5rem] bg-panel-content overflow-hidden animate-in zoom-in-95 border border-panel-inactive">
+                        <div className="flex-1 overflow-y-auto p-4 scroll-smooth">
+                            <Settings />
+                        </div>
+                        <div className="flex-none bg-panel-inactive/30 border-t border-panel-base p-3 flex justify-end gap-2 px-4">
+                            <button onClick={() => { playClickSound(); setSettingsModalOpen(false); }} className="px-5 py-1.5 rounded-full text-xs font-bold bg-panel-active text-white shadow-sm hover:opacity-80 transition-opacity outline-none border-none">
+                                關閉設定
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
-            <Dialog open={modalOpened === "delete-spell-group"} onClose={closeModal} slots={{ transition: Fade }} slotProps={{ transition: { timeout: 300 }, paper: { sx: { backgroundColor: theme?.background?.paper } } }} fullWidth maxWidth="sm">
-                <DialogTitle>刪除法術組</DialogTitle>
-                <DialogContent>
-                    <Typography variant="body1" gutterBottom>確定要刪除此法術組嗎？</Typography>
-                </DialogContent>
-                <DialogActions sx={{ justifyContent: "space-between", padding: "2rem" }}>
-                    <Button variant="outlined" color="inherit" onClick={closeModal}>取消</Button>
-                    <Button variant="contained" color="primary" onClick={() => deleteSpellGroup(groupName)}>是的，刪除它</Button>
-                </DialogActions>
-            </Dialog>
+            {modalOpened === "create-spell-group" && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="w-full max-w-[300px] flex flex-col shadow-2xl rounded-2xl bg-panel-content p-5 animate-in zoom-in-95 border border-panel-inactive">
+                        <h3 className="font-bold text-white mb-2">建立新法術組</h3>
+                        <p className="text-xs text-gray-400 mb-4">請輸入此法術組的名稱：</p>
+                        <input autoFocus type="text" value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder="法術組名稱" className="w-full bg-panel-base text-white text-sm rounded-xl p-2.5 outline-none mb-6 border border-transparent focus:border-panel-active transition-colors" />
+                        <div className="flex justify-end gap-2">
+                            <button onClick={closeModal} className="px-4 py-1.5 rounded-full text-xs font-bold text-gray-400 hover:text-white outline-none">取消</button>
+                            <button onClick={() => confirmGroupName(groupName)} className="px-4 py-1.5 rounded-full text-xs font-bold bg-panel-active text-white outline-none">確認</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
-            <Dialog open={modalOpened === "add-spell"} onClose={closeModal} slots={{ transition: Fade }} slotProps={{ transition: { timeout: 300 }, paper: { sx: { backgroundColor: theme?.background?.paper } } }} fullWidth maxWidth="sm">
-                <DialogTitle>選擇要新增的法術：</DialogTitle>
-                <DialogContent>
-                    <FormControl fullWidth sx={{ mt: 2 }}>
-                        <InputLabel id="select-spell-label">法術</InputLabel>
-                        <Select labelId="select-spell-label" value={selectedSpellID} onChange={(event) => setSelectedSpellID(event.target.value)} label="法術" inputProps={{ MenuProps: { MenuListProps: { sx: { backgroundColor: theme?.background?.paper } } } }}>
-                            <MenuItem disabled value="">選擇法術</MenuItem>
-                            {allSpellIDs.sort((a, b) => a.localeCompare(b)).map((spellID) => {
-                                const spell = getSpell(spellID, isGM);
-                                if (!spell) return null;
-                                return <MenuItem key={spellID} value={spellID}>{spell.name}</MenuItem>;
-                            })}
-                        </Select>
-                    </FormControl>
-                </DialogContent>
-                <DialogActions sx={{ justifyContent: "space-evenly", padding: "2rem" }}>
-                    <Button variant="contained" onClick={() => { closeModal(); addSpellToGroup(groupName, selectedSpellID); }}>新增</Button>
-                    <Button variant="outlined" onClick={closeModal}>取消</Button>
-                </DialogActions>
-            </Dialog>
+            {modalOpened === "change-group-name" && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="w-full max-w-[300px] flex flex-col shadow-2xl rounded-2xl bg-panel-content p-5 animate-in zoom-in-95 border border-panel-inactive">
+                        <h3 className="font-bold text-white mb-2">編輯法術組名稱</h3>
+                        <p className="text-xs text-gray-400 mb-4">請輸入此法術組的新名稱：</p>
+                        <input autoFocus type="text" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} placeholder="法術組名稱" className="w-full bg-panel-base text-white text-sm rounded-xl p-2.5 outline-none mb-6 border border-transparent focus:border-panel-active transition-colors" />
+                        <div className="flex justify-end gap-2">
+                            <button onClick={closeModal} className="px-4 py-1.5 rounded-full text-xs font-bold text-gray-400 hover:text-white outline-none">取消</button>
+                            <button onClick={() => editGroupName(groupName, newGroupName)} className="px-4 py-1.5 rounded-full text-xs font-bold bg-panel-active text-white outline-none">確認</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {modalOpened === "delete-spell-group" && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="w-full max-w-[300px] flex flex-col shadow-2xl rounded-2xl bg-panel-content p-5 animate-in zoom-in-95 border border-panel-inactive">
+                        <h3 className="font-bold text-white mb-2">刪除法術組</h3>
+                        <p className="text-xs text-gray-400 mb-6">確定要刪除此法術組嗎？</p>
+                        <div className="flex justify-end gap-2">
+                            <button onClick={closeModal} className="px-4 py-1.5 rounded-full text-xs font-bold text-gray-400 hover:text-white outline-none">取消</button>
+                            <button onClick={() => deleteSpellGroup(groupName)} className="px-4 py-1.5 rounded-full text-xs font-bold bg-red-500 text-white outline-none">是的，刪除它</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {modalOpened === "add-spell" && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="w-full max-w-[300px] flex flex-col shadow-2xl rounded-2xl bg-panel-content p-5 animate-in zoom-in-95 border border-panel-inactive">
+                        <h3 className="font-bold text-white mb-2">選擇要新增的基礎法術：</h3>
+                        <div className="mb-6 mt-2">
+                            <select value={selectedSpellID} onChange={(e) => setSelectedSpellID(e.target.value)} className="w-full bg-panel-base text-white text-sm rounded-xl p-2.5 outline-none appearance-none cursor-pointer border border-transparent focus:border-panel-active transition-colors">
+                                <option disabled value="">選擇法術</option>
+                                {allSpellIDs.sort((a, b) => a.localeCompare(b)).map((spellID) => {
+                                    const spell = getSpell(spellID, isGM);
+                                    if (!spell) return null;
+                                    return <option key={spellID} value={spellID}>{spell.name}</option>;
+                                })}
+                            </select>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                            <button onClick={closeModal} className="px-4 py-1.5 rounded-full text-xs font-bold text-gray-400 hover:text-white outline-none">取消</button>
+                            <button onClick={() => addSpellToGroup(groupName, selectedSpellID)} className="px-4 py-1.5 rounded-full text-xs font-bold bg-panel-active text-white outline-none">新增並設定</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

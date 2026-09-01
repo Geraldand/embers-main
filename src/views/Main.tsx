@@ -1,146 +1,75 @@
-import "./Main.css";
-
-import { Box, Button, Tab, Tabs, Typography } from "@mui/material";
-import {
-    FaBook,
-    FaDisplay,
-    FaGear,
-    FaHatWizard,
-    FaPlus,
-} from "react-icons/fa6";
-import OBR from "@owlbear-rodeo/sdk";
 import { useEffect, useState } from "react";
+import { FaBook, FaBookOpen, FaWandMagicSparkles } from "react-icons/fa6";
 
-import CustomSpells from "../components/CustomSpells";
 import MovementHandler from "../components/MovementHandler";
 import SceneControls from "../components/SceneControls";
-import Settings from "../components/Settings";
-import SpellBanner from "../components/SpellDetails/SpellBanner";
 import SpellBook from "../components/SpellBook";
-import SpellDetails from "../components/SpellDetails";
+import StoryManager from "../components/StoryManager";
+import { SplashScreen } from "../components/SplashScreen";
 import { useOBR } from "../react-obr/providers";
 
-import { SplashScreen } from "../components/SplashScreen";
-
-// 🌟 保留你原本在 Main.tsx 裡的音效函式
 function playClickSound() {
     try { const audio = new Audio('/click.mp3'); audio.volume = 0.15; audio.play().catch(() => { }); } catch (e) { }
 }
 
-const MENU_OPTIONS = [
-    { label: "Spellbook", icon: <FaBook className="tab-icon" />, component: <SpellBook />, role: "PLAYER" },
-    { label: "Current Spell", icon: <FaHatWizard className="tab-icon" />, component: <SpellDetails />, role: "PLAYER" },
-    { label: "Custom Spells", icon: <FaPlus className="tab-icon" />, component: <CustomSpells />, role: "GM" },
-    { label: "Scene", icon: <FaDisplay className="tab-icon" />, component: <SceneControls />, role: "PLAYER" },
-    { label: "Settings", icon: <FaGear className="tab-icon" />, component: <Settings />, role: "PLAYER" },
-];
-
-const SPELL_DETAIL_TAB = 1;
-
 export default function Main() {
     const obr = useOBR();
-    const [selectedTab, setSelectedTab] = useState(0);
-    const [isGM, setIsGM] = useState(false);
     const [role, setRole] = useState<"GM" | "PLAYER" | null>(null);
-
-    const [isAudioUnlocked, setIsAudioUnlocked] = useState(false);
-    const [showSplash, setShowSplash] = useState(true);
+    const [recapMode, setRecapMode] = useState<"latest" | "list" | null>("latest");
+    
+    const [primaryTab, setPrimaryTab] = useState<"MAGIC" | "STORY">("STORY");
+    const [magicTab, setMagicTab] = useState<"SPELLBOOK" | "ACTIVE">("SPELLBOOK");
 
     useEffect(() => {
-        if (!obr.ready || !obr.player?.role) {
-            return;
-        }
-        const currentRole = obr.player.role as "GM" | "PLAYER";
-        setRole(currentRole);
-        setIsGM(currentRole === "GM");
+        if (!obr.ready || !obr.player?.role) return;
+        setRole(obr.player.role as "GM" | "PLAYER");
     }, [obr.ready, obr.player?.role]);
 
-    // 1. 顯示前情提要畫面
-    if (showSplash) {
-        return (
-            <SplashScreen
-                role={role}
-                isViewingAgain={isAudioUnlocked}
-                onReady={() => {
-                    setIsAudioUnlocked(true);
-                    setShowSplash(false);
-                }}
-            />
-        );
+    if (!obr.ready) return null;
+
+    if (recapMode !== null) {
+        return <SplashScreen role={role} initialMode={recapMode} onReady={() => setRecapMode(null)} />;
     }
 
-    // 2. 玩家待命畫面
-    if (role === "PLAYER") {
-        return (
-            <Box
-                sx={{
-                    height: "100vh",
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    backgroundColor: "#111827",
-                    color: "#9ca3af",
-                    textAlign: "center",
-                    p: 3,
-                    boxSizing: "border-box",
-                }}
-            >
-                <Typography sx={{ fontSize: "3.5rem", mb: 1, animation: "pulse 2s infinite" }}>
-                    🔥
-                </Typography>
-                <Typography variant="h6" fontWeight="bold" sx={{ color: "#f3f4f6", mb: 0.5 }}>
-                    已準備就緒！
-                </Typography>
-                <Typography variant="body2" sx={{ mb: 3 }}>
-                    你的 DM 正在偷偷凝聚火球術...
-                </Typography>
-
-                <Button
-                    variant="outlined"
-                    color="info"
-                    size="small"
-                    startIcon={<FaBook />}
-                    onClick={() => {
-                        playClickSound(); // 🌟 播放音效
-                        setShowSplash(true);
-                    }}
-                    sx={{ borderRadius: 2 }}
-                >
-                    重看前情提要
-                </Button>
-            </Box>
-        );
-    }
-
-    // 3. GM 介面
     return (
-        <Box sx={{ minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-            <Box sx={{ flexGrow: 1 }}>
-                <Tabs
-                    value={selectedTab}
-                    sx={{ width: "100%", "& .MuiTabs-flexContainer": { justifyContent: "space-between", px: 2 }, pt: 2 }}
-                    onChange={(_, value) => {
-                        playClickSound();
-                        setSelectedTab(value);
-                    }}
-                >
-                    {MENU_OPTIONS.map((option, index) => {
-                        if (option.role == "GM" && !isGM) return;
-                        return <Tab key={index + "-option"} value={index} icon={option.icon} iconPosition="start" sx={{ minWidth: "2rem", minHeight: 0, p: 2.5 }} />;
-                    })}
-                </Tabs>
-                <Box sx={{ p: 1.5, overflow: "auto", height: selectedTab === 0 ? "calc(100vh - 7.5rem)" : "calc(100vh - 4rem)", scrollbarWidth: "none", "&::-webkit-scrollbar": { display: "none" } }}>
-                    {MENU_OPTIONS[selectedTab].component}
-                </Box>
-            </Box>
+        <div className="relative h-screen w-full flex flex-col bg-panel-base text-white font-sans overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-3 pb-4 scroll-smooth no-scrollbar flex flex-col">
+                {role === "GM" && primaryTab === "MAGIC" && (
+                    <>
+                        {/* GM 法術介面：單列設計 */}
+                        <div className="flex w-full items-center mb-3 shrink-0">
+                            <div className="flex bg-panel-inactive p-1 rounded-lg shrink-0 shadow-sm mr-1.5">
+                                <button className="w-8 h-7 bg-panel-active text-white rounded flex items-center justify-center shadow-sm outline-none"><FaWandMagicSparkles className="w-3.5 h-3.5" /></button>
+                                <button onClick={() => { playClickSound(); setPrimaryTab("STORY"); }} className="w-8 h-7 text-gray-400 hover:text-white flex items-center justify-center outline-none transition-colors"><FaBookOpen className="w-3.5 h-3.5" /></button>
+                            </div>
+                            <div className="flex flex-1 bg-panel-inactive p-1 rounded-lg shadow-sm">
+                                <button onClick={() => { playClickSound(); setMagicTab("SPELLBOOK"); }} className={`flex-1 text-[13px] font-bold h-7 rounded-md transition-all outline-none ${magicTab === "SPELLBOOK" ? "bg-panel-active text-white shadow-sm" : "text-gray-400 hover:text-white"}`}>法術書</button>
+                                <button onClick={() => { playClickSound(); setMagicTab("ACTIVE"); }} className={`flex-1 text-[13px] font-bold h-7 rounded-md transition-all outline-none ${magicTab === "ACTIVE" ? "bg-panel-active text-white shadow-sm" : "text-gray-400 hover:text-white"}`}>運行法術</button>
+                            </div>
+                            <div className="flex items-center ml-1.5 bg-panel-inactive p-1 rounded-lg shadow-sm">
+                                <button onClick={() => { playClickSound(); setRecapMode("list"); }} title="歷史前情提要" className="w-7 h-7 text-gray-400 hover:text-white flex items-center justify-center outline-none transition-colors"><FaBook className="w-3.5 h-3.5" /></button>
+                            </div>
+                        </div>
+                        <div className="flex-1 relative overflow-y-auto no-scrollbar">
+                            {magicTab === "SPELLBOOK" ? <SpellBook /> : <SceneControls />}
+                        </div>
+                    </>
+                )}
 
-            {selectedTab === 0 && (
-                <Box sx={{ overflow: "hidden" }}>
-                    <SpellBanner onButtonClick={() => setSelectedTab(SPELL_DETAIL_TAB)} />
-                </Box>
-            )}
+                {/* 故事管理介面 (支援 GM 與 PLAYER) */}
+                {(role === "PLAYER" || primaryTab === "STORY") && (
+                    <StoryManager
+                        openRecap={() => setRecapMode("list")}
+                        renderLeftToggle={ role === "GM" ? (
+                            <div className="flex bg-panel-inactive p-1 rounded-lg shrink-0 shadow-sm mr-1.5">
+                                <button onClick={() => { playClickSound(); setPrimaryTab("MAGIC"); }} className="w-8 h-7 text-gray-400 hover:text-white flex items-center justify-center outline-none transition-colors"><FaWandMagicSparkles className="w-3.5 h-3.5" /></button>
+                                <button className="w-8 h-7 bg-panel-active text-white rounded flex items-center justify-center shadow-sm outline-none"><FaBookOpen className="w-3.5 h-3.5" /></button>
+                            </div>
+                        ) : undefined }
+                    />
+                )}
+            </div>
             <MovementHandler />
-        </Box>
+        </div>
     );
 }

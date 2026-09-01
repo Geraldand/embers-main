@@ -1,159 +1,63 @@
-import "./SpellDetails.css";
-
-import { APP_KEY, ASSET_LOCATION } from "../../config";
-import { Box, Typography } from "@mui/material";
-import {
-    NumberContent,
-    OptionsContent,
-    Parameter,
-    ReplicationType,
-    Spell,
-} from "../../types/spells";
-import OBR, { Metadata } from "@owlbear-rodeo/sdk";
-import { useCallback, useEffect, useState } from "react";
-
+import { ASSET_LOCATION } from "../../config";
+import { NumberContent, OptionsContent, Parameter, ReplicationType, SpellInstance } from "../../types/spells";
+import { useCallback } from "react";
 import AssetPicker from "../AssetPicker";
 import Checkbox from "../Checkbox";
-import { FaCopy } from "react-icons/fa6";
-import { SimplifiedItem } from "../../types/misc";
 import { getSpell } from "../../effects/spells";
-import { toolMetadataSelectedSpell } from "../../effectsTool";
-import { useOBR } from "../../react-obr/providers";
 
 function replicationValue(replicationValue: ReplicationType) {
-    if (replicationValue === "no") {
-        return "None";
-    } else if (replicationValue === "all") {
-        return "All";
-    } else if (replicationValue === "first_to_all") {
-        return "Origin to others";
-    }
-    return "?";
+    if (replicationValue === "no") return "無";
+    if (replicationValue === "all") return "全部";
+    if (replicationValue === "first_to_all") return "起點至其餘目標";
+    return "未知";
 }
 
 function copyValue(copyDelay: number) {
-    if (copyDelay < 0) {
-        return "None";
-    } else if (copyDelay === 0) {
-        return "Instant";
-    } else if (copyDelay > 0) {
-        return `Delayed (${copyDelay}ms)`;
-    }
-    return "?";
+    if (copyDelay < 0) return "無";
+    if (copyDelay === 0) return "立即";
+    if (copyDelay > 0) return `延遲 ${copyDelay} 毫秒`;
+    return "未知";
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {
     return (
-        <div className="spell-details-row">
-            <p className="label">{label}</p>
-            <p>{value}</p>
+        <div className="flex items-center justify-between text-sm py-1">
+            <p className="font-bold text-gray-400">{label}</p>
+            <p className="text-white">{value}</p>
         </div>
     );
 }
 
 function ParameterRow({
-    spellID,
     parameter,
+    value,
+    onChange
 }: {
-    spellID: string;
     parameter: Parameter;
+    value: any;
+    onChange: (val: any) => void;
 }) {
-    const [optionsValue, setOptionsValue] = useState<string | null>(null);
-    const [inputValue, setInputValue] = useState<string | null>(null);
-    const [booleanValue, setBooleanValue] = useState<boolean | null>(null);
-    const [assetValue, setAssetValue] = useState<SimplifiedItem[] | null>(null);
-
     const setValidatedParameterValue = useCallback(
-        (value: string) => {
+        (val: string) => {
             const content = parameter.content as NumberContent;
-            const intValue = parseInt(value ?? "0");
-            if (isNaN(intValue)) {
-                return;
-            }
-            let realValue = intValue.toString();
-            if (content.min && intValue < content.min) {
-                realValue = content.min.toString();
-            } else if (content.max && intValue > content.max) {
-                realValue = content.max.toString();
-            }
-            setInputValue(realValue);
+            let intValue = parseInt(val ?? "0");
+            if (isNaN(intValue)) return;
+
+            if (content.min && intValue < content.min) intValue = content.min;
+            else if (content.max && intValue > content.max) intValue = content.max;
+            onChange(intValue);
         },
-        [parameter.content]
+        [parameter.content, onChange]
     );
 
-    useEffect(() => {
-        const spellParameters = localStorage.getItem(
-            `${APP_KEY}/spell-parameters/${spellID}`
-        );
-        if (spellParameters) {
-            const parameters = JSON.parse(spellParameters);
-            const value = parameters[parameter.id];
-            if (value != undefined) {
-                switch (parameter.type) {
-                    case "options":
-                        setOptionsValue(value);
-                        break;
-                    case "number":
-                        setInputValue(value.toString());
-                        break;
-                    case "asset":
-                        setAssetValue(value ?? []);
-                        break;
-                    case "boolean":
-                        setBooleanValue(value);
-                        break;
-                    default:
-                        setOptionsValue(value.toString());
-                        break;
-                }
-            }
-        }
-    }, [parameter, spellID]);
-
-    useEffect(() => {
-        const spellParameters = localStorage.getItem(
-            `${APP_KEY}/spell-parameters/${spellID}`
-        );
-        const parameters = spellParameters ? JSON.parse(spellParameters) : {};
-        let update = true;
-        switch (parameter.type) {
-            case "options":
-                update = optionsValue != null;
-                parameters[parameter.id] = optionsValue;
-                break;
-            case "asset":
-                update = assetValue != null;
-                parameters[parameter.id] = assetValue;
-                break;
-            case "number":
-                update = inputValue != null;
-                parameters[parameter.id] = parseInt(inputValue ?? parameter.defaultValue as string);
-                break;
-            case "boolean":
-                update = booleanValue != null;
-                parameters[parameter.id] = booleanValue;
-                break;
-            default:
-                update = optionsValue != null;
-                parameters[parameter.id] = optionsValue;
-                break;
-        }
-        if (update) {
-            localStorage.setItem(
-                `${APP_KEY}/spell-parameters/${spellID}`,
-                JSON.stringify(parameters)
-            );
-        }
-    }, [parameter, spellID, optionsValue, assetValue, inputValue, booleanValue]);
-
     return (
-        <div className="spell-details-row">
-            <p className="label">{parameter.name}</p>
+        <div className="flex items-center justify-between text-sm py-2 border-b border-panel-inactive last:border-0">
+            <p className="font-bold text-gray-300">{parameter.name}</p>
             {parameter.type === "options" && (
                 <select
-                    className="small-select"
-                    value={optionsValue ?? (parameter.defaultValue as string)}
-                    onChange={(e) => setOptionsValue(e.target.value)}
+                    className="bg-panel-base text-white outline-none rounded-lg px-2 py-1 border border-panel-inactive focus:border-panel-active"
+                    value={value ?? (parameter.defaultValue as string)}
+                    onChange={(e) => onChange(e.target.value)}
                 >
                     {(parameter.content as OptionsContent).map((option, index) => (
                         <option key={`${option.value}-${index}`} value={option.value}>
@@ -164,179 +68,93 @@ function ParameterRow({
             )}
             {parameter.type === "number" && (
                 <input
-                    className="settings-input"
+                    className="bg-panel-base text-white outline-none rounded-lg px-2 py-1 w-20 text-center border border-panel-inactive focus:border-panel-active"
                     type="number"
-                    value={
-                        inputValue ??
-                        (parameter.defaultValue as number).toString()
-                    }
+                    value={value ?? (parameter.defaultValue as number)}
                     min={(parameter.content as NumberContent)?.min}
                     max={(parameter.content as NumberContent)?.max}
-                    onChange={(e) =>
-                        setValidatedParameterValue(e.currentTarget.value)
-                    }
-                    onInput={(e) => setInputValue(e.currentTarget.value)}
+                    onChange={(e) => setValidatedParameterValue(e.currentTarget.value)}
                 />
             )}
             {parameter.type === "boolean" && (
                 <Checkbox
-                    checked={booleanValue ?? (parameter.defaultValue as boolean|undefined) ?? false}
-                    setChecked={(value) =>
-                        setBooleanValue(value)
-                    }
+                    checked={value ?? (parameter.defaultValue as boolean | undefined) ?? false}
+                    setChecked={(val) => onChange(val)}
                 />
             )}
             {parameter.type === "asset" && (
-                <AssetPicker
-                    value={assetValue ?? []}
-                    setValue={setAssetValue}
-                />
+                <AssetPicker value={value ?? []} setValue={onChange} />
             )}
         </div>
     );
 }
 
-export default function SpellDetails() {
-    const obr = useOBR();
-    const [selectedSpellID, setSelectedSpellID] = useState<string>();
-    const [selectedSpell, setSelectedSpell] = useState<Spell>();
-    const [isGM, setIsGM] = useState(false);
+export default function SpellDetails({
+    spellInstance,
+    isGM,
+    onUpdate
+}: {
+    spellInstance: SpellInstance | null;
+    isGM: boolean;
+    onUpdate: (updatedInstance: SpellInstance) => void;
+}) {
+    if (!spellInstance) {
+        return <div className="p-4 text-center text-gray-400">載入中...</div>;
+    }
 
-    useEffect(() => {
-        if (!obr.ready || !obr.player?.role) {
-            return;
-        }
-        if (obr.player.role != "GM" && isGM) {
-            setIsGM(false);
-        } else if (obr.player.role == "GM" && !isGM) {
-            setIsGM(true);
-        }
-    }, [obr.ready, obr.player?.role, isGM]);
+    const baseSpell = getSpell(spellInstance.baseSpellId, isGM);
 
-    useEffect(() => {
-        if (!obr.ready) {
-            return;
-        }
-
-        const setSelected = (metadata: Metadata) => {
-            const selectedSpell = metadata?.[toolMetadataSelectedSpell];
-            if (typeof selectedSpell == "string") {
-                const spell = getSpell(selectedSpell, isGM);
-                setSelectedSpell(spell);
-                setSelectedSpellID(selectedSpell);
-            }
-        };
-
-        OBR.player.getMetadata().then(setSelected);
-
-        return OBR.player.onChange((player) => setSelected(player.metadata));
-    }, [obr.ready, isGM]);
+    if (!baseSpell) {
+        return <div className="p-4 text-red-500 text-sm font-bold text-center">找不到基礎法術資料。</div>;
+    }
 
     return (
-        <Box>
-            <Typography
-                mb={"0.5rem"}
-                variant="h6"
-                className="title spellbook-options"
-            >
-                Spell Details
-            </Typography>
-            {!selectedSpell ? (
-                <Typography variant="body2" sx={{ m: 1, mb: 0 }}>
-                    No active spells. Select or add one from above! 🧙‍♂️🔥
-                </Typography>
-            ) : (
-                <>
-                    <div>
-                        <div
-                            className="spell-details-header"
-                            style={{
-                                display: "flex",
-                                alignItems: "center",
-                                backgroundImage: `url(${ASSET_LOCATION}/${selectedSpell.thumbnail})`,
-                                backgroundSize: "cover",
-                                backgroundPosition: "center",
-                                padding: "1rem",
-                            }}
-                        >
-                            <div>
-                                <span
-                                    className="title"
-                                    style={{
-                                        backgroundColor: "rgba(0, 0, 0, 0.75)", // Faded black background
-                                        color: "white",
-                                        padding: "0.5rem",
-                                        borderRadius: "4px",
-                                        display: "block",
-                                        // flexDirection: "column",
-                                    }}
-                                >
-                                    {selectedSpell.name}
-                                    <Typography
-                                        variant="body2"
-                                        sx={{ ml: 0, textAlign: "start" }}
-                                        display={"block"}
-                                    >
-                                        {selectedSpellID}
-                                        <FaCopy
-                                            style={{
-                                                marginLeft: "0.5rem",
-                                                cursor: "pointer",
-                                            }}
-                                            onClick={() => {
-                                                // TODO: Add copy functionality to this whole thing
-                                            }}
-                                        />
-                                    </Typography>
-                                </span>
-                            </div>
-                            <img
-                                className="spell-details-thumbnail"
-                                src={`${ASSET_LOCATION}/${selectedSpell.thumbnail}`}
-                            />
-                        </div>
-                        <hr
-                            className="spell-details-divider"
-                            style={{ marginBottom: "0.5rem" }}
+        <div className="flex flex-col gap-4">
+            <h3 className="text-base font-black text-white px-1">法術細節</h3>
+
+            <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-4 bg-panel-base p-3 rounded-2xl border border-panel-inactive shadow-inner">
+                    <img
+                        className="w-12 h-12 object-contain drop-shadow-sm shrink-0"
+                        src={`${ASSET_LOCATION}/${baseSpell.thumbnail}`}
+                        alt={baseSpell.name}
+                    />
+                    <div className="flex flex-col flex-1 gap-1 min-w-0">
+                        <input 
+                            type="text"
+                            value={spellInstance.customName || baseSpell.name}
+                            onChange={(e) => onUpdate({ ...spellInstance, customName: e.target.value })}
+                            className="bg-transparent text-white font-bold text-sm outline-none border-b border-panel-inactive focus:border-panel-active transition-colors pb-1 w-full truncate"
+                            placeholder="自訂法術名稱..."
                         />
-                        {selectedSpell.minTargets != undefined && (
-                            <DetailRow
-                                label="Minimum number of targets"
-                                value={selectedSpell.minTargets.toString()}
-                            />
-                        )}
-                        {selectedSpell.maxTargets != undefined && (
-                            <DetailRow
-                                label="Maximum number of targets"
-                                value={selectedSpell.maxTargets.toString()}
-                            />
-                        )}
-                        {selectedSpell.replicate && (
-                            <DetailRow
-                                label="Replication mode"
-                                value={replicationValue(
-                                    selectedSpell.replicate
-                                )}
-                            />
-                        )}
-                        {selectedSpell.copy != undefined && (
-                            <DetailRow
-                                label="Copy mode"
-                                value={copyValue(selectedSpell.copy)}
-                            />
-                        )}
-                        {selectedSpellID &&
-                            selectedSpell.parameters &&
-                            selectedSpell.parameters.map((parameter) => (
-                                <ParameterRow
-                                    key={parameter.id}
-                                    parameter={parameter}
-                                    spellID={selectedSpellID}
-                                />
-                            ))}
+                        <span className="text-[10px] text-gray-500 font-mono truncate">{spellInstance.baseSpellId}</span>
                     </div>
-                </>
-            )}
-        </Box>
+                </div>
+
+                <div className="flex flex-col gap-1 bg-panel-base p-3 rounded-2xl border border-panel-inactive shadow-inner">
+                    {baseSpell.minTargets != undefined && <DetailRow label="最少目標數量" value={baseSpell.minTargets.toString()} />}
+                    {baseSpell.maxTargets != undefined && <DetailRow label="最多目標數量" value={baseSpell.maxTargets.toString()} />}
+                    {baseSpell.replicate && <DetailRow label="複製模式" value={replicationValue(baseSpell.replicate)} />}
+                    {baseSpell.copy != undefined && <DetailRow label="拷貝模式" value={copyValue(baseSpell.copy)} />}
+                </div>
+
+                {baseSpell.parameters && baseSpell.parameters.length > 0 && (
+                    <div className="flex flex-col bg-panel-base p-3 rounded-2xl border border-panel-inactive shadow-inner">
+                        <h4 className="text-xs font-bold text-gray-500 mb-2">參數設定</h4>
+                        {baseSpell.parameters.map((parameter) => (
+                            <ParameterRow
+                                key={parameter.id}
+                                parameter={parameter}
+                                value={spellInstance.parameters[parameter.id]}
+                                onChange={(val) => onUpdate({
+                                    ...spellInstance,
+                                    parameters: { ...spellInstance.parameters, [parameter.id]: val }
+                                })}
+                            />
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
     );
 }

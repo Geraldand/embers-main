@@ -97,11 +97,11 @@ function SpellDisplay({
     return (
         <div className="scene-spell-display-item">
             <p
-                title={`Spell name: ${
+                title={`法術名稱：${
                     displayName
-                }\nEffect ID: ${effectID}\nAttached to: ${
-                    attachedToName ?? "nothing"
-                }\nCaster: ${caster.name}`}
+                }\n特效 ID：${effectID}\n附加於：${
+                    attachedToName ?? "無"
+                }\n施法者：${caster.name}`}
             >
                 {" "}
                 {displayName}
@@ -110,28 +110,28 @@ function SpellDisplay({
                 <div
                     className="scene-spell-display-control-button"
                     onClick={selectItem}
-                    title="Select this effect"
+                    title="選取此特效"
                 >
                     <FaArrowPointer />
                 </div>
                 <div
                     className="scene-spell-display-control-button"
                     onClick={toggleItemDisableHit}
-                    title={item.disableHit ? "Enable hit" : "Disable hit"}
+                    title={item.disableHit ? "允許選取" : "禁止選取"}
                 >
                     {item.disableHit ? <FaLinkSlash /> : <FaLink />}
                 </div>
                 <div
                     className="scene-spell-display-control-button"
                     onClick={toggleItemVisibility}
-                    title={item.visible ? "Hide effect" : "Show effect"}
+                    title={item.visible ? "隱藏特效" : "顯示特效"}
                 >
                     {item.visible ? <FaEye /> : <FaEyeSlash />}
                 </div>
                 <div
                     className="scene-spell-display-control-button"
                     onClick={deleteItem}
-                    title="Delete this effect"
+                    title="刪除此特效"
                 >
                     <FaSquareMinus />
                 </div>
@@ -266,17 +266,17 @@ export default function SceneControls() {
             {player ? (
                 <>
                     <Typography variant="h6" className="subtitle">
-                        Active Effects
+                        運行中的法術
                     </Typography>
                     {[player, ...party].map((player) => (
                         <PlayerEffects key={player.id} player={player} />
                     ))}
                     {!spellEffectsPresent && (
-                        <p>No spell effects in this scene.</p>
+                        <p>此場景中沒有運行中的法術特效。</p>
                     )}
                 </>
             ) : (
-                <p>No scene selected.</p>
+                <p>未選擇場景。</p>
             )}
         </div>
     );
