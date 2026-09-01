@@ -1,6 +1,32 @@
 import OBR from "@owlbear-rodeo/sdk";
 import { log_error } from "./logging";
 
+// Add safe JSON parsing utility
+export function safeJsonParse<T>(jsonString: string | null, fallback: T): T {
+    if (!jsonString) return fallback;
+    try {
+        return JSON.parse(jsonString) as T;
+    } catch (e) {
+        return fallback;
+    }
+}
+
+// Add global audio unlocker
+let isAudioUnlocked = false;
+export function unlockAudio() {
+    if (isAudioUnlocked) return;
+    const audio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA");
+    audio.volume = 0;
+    audio.play().then(() => {
+        isAudioUnlocked = true;
+    }).catch(() => {});
+    document.removeEventListener("pointerdown", unlockAudio);
+}
+
+export function setupAudioUnlock() {
+    document.addEventListener("pointerdown", unlockAudio);
+}
+
 export interface SizedItem {
     image?: {
         width: number;

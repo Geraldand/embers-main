@@ -221,14 +221,14 @@ export default function Settings() {
             variant="h6"
             className="title spellbook-options"
         >
-            Settings
+            設定
         </Typography>
         <div className="settings-menu">
             <div>
-                <p className="subtitle" title="These settings apply to you only.">Local Settings</p>
-                <div className="settings-item" title="If set, the first target for some spells will be one of these token, when applicable.">
+                <p className="subtitle" title="這些設定僅適用於您個人。">本地端設定</p>
+                <div className="settings-item" title="設定後，部分法術的第一個目標將自動選擇此代幣。">
                     <label>
-                        <p>Default caster</p>
+                        <p>預設施法者</p>
                     </label>
                     <div style={{ maxWidth: "15rem" }}>
                         <Button
@@ -238,15 +238,15 @@ export default function Settings() {
                         >
                             {
                                 (defaultCaster == null || defaultCaster.length == 0) ?
-                                    "Select" :
+                                    "請選擇" :
                                     defaultCaster.map(image => image.name).join(", ")
                             }
                         </Button>
                     </div>
                 </div>
                 <div className="settings-item">
-                    <label htmlFor="grid-scaling-factor" title="A scaling factor for effects; a spell's width and height will be multiplied by this number. Useful if your grid size is not 5ft">
-                        <p>Grid scaling factor</p>
+                    <label htmlFor="grid-scaling-factor" title="特效的縮放比例，法術的寬度與高度將乘上此數值。">
+                        <p>網格縮放比例</p>
                     </label>
                     <input
                         name="grid-scaling-factor"
@@ -259,15 +259,15 @@ export default function Settings() {
                         onChange={event => setGridScalingFactor(event.target.value)}
                     />
                 </div>
-                <div className="settings-item" title="Whether to keep the selected targets the same after a spell is cast/the tool is de-selected.">
-                    <label htmlFor="recent-spells-list-size">
-                        <p>Keep selected targets</p>
+                <div className="settings-item" title="施法後或取消選取工具後，是否保留已選擇的目標。">
+                    <label htmlFor="keep-selected-targets">
+                        <p>保留已選目標</p>
                     </label>
                     <Checkbox checked={keepTargets ?? false} onChange={(event) => { setKeepTargets(event.currentTarget.checked) }} />
                 </div>
                 <div className="settings-item">
-                    <label htmlFor="recent-spells-list-size" title="The size of the recent spells list.">
-                        <p>Recent spells list size</p>
+                    <label htmlFor="recent-spells-list-size" title="最近法術清單的顯示數量。">
+                        <p>最近法術清單大小</p>
                     </label>
                     <input
                         name="recent-spells-list-size"
@@ -279,8 +279,8 @@ export default function Settings() {
                     />
                 </div>
                 <div className="settings-item">
-                    <label htmlFor="animation-update-rate" title="How many updates (per second) are performed when animating items. WARNING: setting this to a high value may lag your computer.">
-                        <p>Animation update rate</p>
+                    <label htmlFor="animation-update-rate" title="動畫物品時每秒的更新次數。">
+                        <p>動畫更新頻率</p>
                     </label>
                     <input
                         name="animation-update-rate"
@@ -296,20 +296,20 @@ export default function Settings() {
                 obr.player?.role === "GM" && <>
                     <hr style={{ margin: "0.5rem 0" }}></hr>
                     <div>
-                        <p className="subtitle" title="These settings apply to all players and can only be set by the GM.">GM Settings</p>
+                        <p className="subtitle" title="這些設定適用於所有玩家，且僅能由遊戲主持者修改。">遊戲主持者設定</p>
                         <div className="settings-item">
-                            <label htmlFor="recent-spells-list-size" title="If set to false, only the GM can cast spells.">
-                                <p>Players can cast spells</p>
+                            <label htmlFor="players-cast-spells" title="若取消勾選，則僅有遊戲主持者可以施法。">
+                                <p>允許玩家施法</p>
                             </label>
                             <Checkbox checked={playersCastSpells ?? false} onChange={(event) => { setPlayersCastSpells(event.currentTarget.checked) }} />
                         </div>
-                        <div className="settings-item" title={"Who should own items summoned by Embers. \"Caster\" means the player who cast the spell will own them, while \"GM\" means that the GM will own them regardless of who cast it."}>
-                            <label htmlFor="recent-spells-list-size">
-                                <p>Summoned entities rule</p>
+                        <div className="settings-item" title={"設定由誰擁有召喚物。「施法者」代表由施放該法術的玩家擁有，而「僅限遊戲主持者」代表無論誰施法，都由主持者擁有。"}>
+                            <label htmlFor="summoned-entities-rule">
+                                <p>召喚物所有權規則</p>
                             </label>
                             <select className="settings-select" onChange={event => setSummonedEntities(event.target.value)} value={summonedEntities ?? ""} >
-                                <option value="gm-only">GM Only</option>
-                                <option value="caster">Caster</option>
+                                <option value="gm-only">僅限遊戲主持者</option>
+                                <option value="caster">施法者</option>
                             </select>
                         </div>
                     </div>
@@ -325,19 +325,18 @@ export default function Settings() {
             maxWidth="sm"
         >
             <DialogTitle>
-                Delete spell group
+                設定預設施法者
             </DialogTitle>
 
             <DialogContent>
                 <Typography variant="body1" gutterBottom>
-                    Please choose from one or more of your assets, or choose{" "}
-                    <strong>"Use Selected"</strong> to use your currently selected tokens.
+                    請選擇一或多個資源，或點擊 <strong>使用當前選取</strong> 以套用您目前在場景中選取的代幣。
                 </Typography>
 
                 <Typography variant="body1">
-                    <strong>Selected</strong>:{" "}
+                    <strong>已選擇</strong>：
                     {defaultCaster == null || defaultCaster.length === 0
-                        ? "None"
+                        ? "無"
                         : defaultCaster.map((image) => image.name).join(", ")}
                 </Typography>
             </DialogContent>
@@ -348,21 +347,21 @@ export default function Settings() {
                     variant="outlined"
                     color="primary"
                 >
-                    Open Assets
+                    開啟資源
                 </Button>
                 <Button
                     onClick={() => { handleSetCasterFromSelection(); closeModal(); }}
                     variant="outlined"
                     color="primary"
                 >
-                    Use Selected
+                    使用當前選取
                 </Button>
                 <Button
                     onClick={() => { setDefaultCaster([]); closeModal(); }}
                     variant="outlined"
                     color="primary"
                 >
-                    Clear Selection
+                    清除選取
                 </Button>
             </Box>
         </Dialog>

@@ -56,6 +56,17 @@ function moveEffect(effectItemId: string, items: Item[], dpi: number) {
     }
     const scale = distance / (variantSize / effect.dpi);
 
+    // Guard to prevent infinite update loops
+    if (
+        effectItem.position.x === position.x &&
+        effectItem.position.y === position.y &&
+        effectItem.rotation === rotation &&
+        effectItem.scale.x === scale &&
+        effectItem.scale.y === scale
+    ) {
+        return;
+    }
+
     OBR.scene.items.updateItems([effectItem], effectItems => {
         for (const effectItem of effectItems) {
             effectItem.scale = { x: scale, y: scale };

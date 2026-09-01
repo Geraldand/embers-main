@@ -319,12 +319,10 @@ async function setupTargetToolModes() {
             cursor: "pointer",
             filter: {
                 target: [
-                    {
-                        key: "layer", value: "CHARACTER", coordinator: "||"
-                    },
-                    {
-                        key: "layer", value: "DRAWING"
-                    },
+                    { key: "layer", value: "CHARACTER", coordinator: "||" },
+                    { key: "layer", value: "DRAWING", coordinator: "||" },
+                    { key: "layer", value: "MOUNT", coordinator: "||" },
+                    { key: "layer", value: "PROP" }
                 ]
             }
         }],
@@ -386,12 +384,10 @@ async function setupTargetToolModes() {
             cursor: "pointer",
             filter: {
                 target: [
-                    {
-                        key: "layer", value: "CHARACTER", coordinator: "||"
-                    },
-                    {
-                        key: "layer", value: "DRAWING"
-                    },
+                    { key: "layer", value: "CHARACTER", coordinator: "||" },
+                    { key: "layer", value: "DRAWING", coordinator: "||" },
+                    { key: "layer", value: "MOUNT", coordinator: "||" },
+                    { key: "layer", value: "PROP" }
                 ]
             }
         }],

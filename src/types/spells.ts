@@ -2,7 +2,12 @@ import { BlueprintValue, EffectBlueprint } from "./blueprint";
 
 export type ReplicationType = "no" | "all" | "first_to_all";
 export type ParameterType = "options" | "number" | "boolean" | "asset";
-
+export interface SpellInstance {
+    instanceId: string;
+    baseSpellId: string;
+    customName?: string;
+    parameters: Record<string, any>;
+}
 export type OptionsContent = {
     value: string;
     label: string;

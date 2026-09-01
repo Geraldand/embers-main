@@ -6,6 +6,7 @@ import { Spell } from "../types/spells";
 import { getSpell } from "./spells";
 import objectHash from "object-hash";
 import { constants } from "../constants";
+import { safeJsonParse } from "../utils";
 
 export const SETUP_MESSAGE_CHANNEL = `${APP_KEY}/setup`;
 export interface ClientSetupMessageData {
@@ -22,7 +23,8 @@ export interface ServerSetupMessageData {
 
 function getLocalSpellsDifference(roomId: string, spellList: [string, string][]) {
     const currentSpellListJSON = localStorage.getItem(`${constants.SPELL_LIST_METADATA_KEY}/${roomId}`);
-    const currentSpellList: [string, string][] = JSON.parse(currentSpellListJSON ?? "[]");
+    // Replace risky JSON.parse
+    const currentSpellList = safeJsonParse<[string, string][]>(currentSpellListJSON, []);
 
     const currentSpellMap = new Map(currentSpellList);
     const spellMap = new Map(spellList);
@@ -46,7 +48,8 @@ function getLocalSpellsDifference(roomId: string, spellList: [string, string][])
 
 function deleteLocalSpells(roomId: string, spellList: [string, string][]) {
     const currentSpellListJSON = localStorage.getItem(`${constants.SPELL_LIST_METADATA_KEY}/${roomId}`);
-    const currentSpellList: [string, string][] = JSON.parse(currentSpellListJSON ?? "[]");
+    // Replace risky JSON.parse
+    const currentSpellList = safeJsonParse<[string, string][]>(currentSpellListJSON, []);
     const newSpellList = currentSpellList.filter(spell => !spellList.map(spell => spell[0]).includes(spell[0]));
     const newSpellListJSON = JSON.stringify(newSpellList);
     localStorage.setItem(`${constants.SPELL_LIST_METADATA_KEY}/${roomId}`, newSpellListJSON);
@@ -58,7 +61,8 @@ function deleteLocalSpells(roomId: string, spellList: [string, string][]) {
 function addLocalSpells(roomId: string, spells: Record<string, Spell>) {
     const spellList = Object.entries(spells).map(([spellIDs, spell]) => [spellIDs, objectHash.sha1(spell)]);
     const currentSpellListJSON = localStorage.getItem(`${constants.SPELL_LIST_METADATA_KEY}/${roomId}`);
-    const currentSpellList: [string, string][] = JSON.parse(currentSpellListJSON ?? "[]");
+    // Replace risky JSON.parse
+    const currentSpellList = safeJsonParse<[string, string][]>(currentSpellListJSON, []);
     const currentSpellMap = new Map(currentSpellList);
     const newSpellList = [...currentSpellList, ...spellList.filter(s => !currentSpellMap.has(s[0]))];
     const newSpellListJSON = JSON.stringify(newSpellList);
@@ -113,11 +117,11 @@ export function setupPlayerLocalSpells() {
 
     return unsubscribe;
 }
-
 export function sendSpellsUpdate(destination: string) {
     const localSpellsListJSON = localStorage.getItem(constants.SPELL_LIST_METADATA_KEY);
-    const localSpellsListWithoutHash = JSON.parse(localSpellsListJSON ?? "[]");
-    const localSpellsList = (localSpellsListWithoutHash as string[]).map(
+    // Replace risky JSON.parse
+    const localSpellsListWithoutHash = safeJsonParse<string[]>(localSpellsListJSON, []);
+    const localSpellsList = localSpellsListWithoutHash.map(
         (spellID: string) => [spellID, getSpell(`$.${spellID}`, true)] as [string, Spell|undefined]
     ).filter(
         o => o[1] != undefined

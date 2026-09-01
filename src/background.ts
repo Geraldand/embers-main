@@ -49,7 +49,7 @@ async function targetedPreloadAssets() {
         };
 
         // 🌟 核心目標 A：掃描使用者的「法術書」
-        const spellListJSON = localStorage.getItem(constants.SPELL_LIST_METADATA_KEY);
+        const spellListJSON = localStorage.getItem(`${constants.SPELL_LIST_METADATA_KEY}/${OBR.room.id}`);
         if (spellListJSON) {
             const spellList = JSON.parse(spellListJSON);
             // 假設 spellList 是陣列或物件，將裡面的法術 ID 抽出來預載
@@ -220,6 +220,27 @@ function setup() {
     unsubscribeMessageListener = setupMessageListener() as unknown as (() => void);
 
     let unsubscribe: (() => void) | null = null;
+    OBR.broadcast.onMessage("eu.armindo.embers/story-sync", async (msg) => {
+        const payload = msg.data as any;
+        if (payload.type === "FORCE_OPEN_LEGACY") {
+            const role = await OBR.player.getRole();
+            const myId = await OBR.player.getId();
+            
+            // Check player targeting and exclude DM
+            if (role === "GM") return;
+            
+            const targets = payload.targets || ["ALL"];
+            if (targets.includes("ALL") || targets.includes(myId)) {
+                localStorage.setItem(`eu.armindo.embers/current-broadcast-legacy`, JSON.stringify(payload.legacy));
+                OBR.modal.open({
+                    id: "eu.armindo.embers/legacy-reader",
+                    url: `/?view=legacy-reader`,
+                    width: 500,
+                    height: 650,
+                });
+            }
+        }
+    });
     OBR.scene.isReady().then(ready => {
         if (ready) {
             unsubscribe = setupScene();

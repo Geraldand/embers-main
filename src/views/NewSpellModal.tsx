@@ -1114,9 +1114,11 @@ export default function NewSpellModal() {
                 />
             </p>
             {
-                blueprints.map((blueprint, i) => (
-                    <SpellBlueprint key={i} blueprint={blueprint} blueprintIndex={i} />
-                ))
+                blueprints.map((blueprint, i) => {
+                    // Create a stable string key to prevent React render issues and satisfy TypeScript
+                    const keyString = typeof blueprint.id === "string" ? blueprint.id : JSON.stringify(blueprint.id);
+                    return <SpellBlueprint key={`${keyString}-${i}`} blueprint={blueprint} blueprintIndex={i} />;
+                })
             }
             <hr style={{margin: "0.5rem 0px"}}></hr>
         </div>
