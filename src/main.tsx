@@ -13,37 +13,22 @@ import NewSpellModal from "./views/NewSpellModal.tsx";
 import OBR from "@owlbear-rodeo/sdk";
 import SpellSelectionPopover from "./views/SpellSelectionPopover.tsx";
 import Tutorials from "./views/Tutorials.tsx";
-import { createRoot } from "react-dom/client";
+import { createRoot, Root } from "react-dom/client";
 import { log_error } from "./logging.ts";
 import { setupAudioUnlock } from "./utils.ts";
 import LegacyReaderModal from "./views/LegacyReaderModal.tsx";
 
-const params = new URLSearchParams(window.location.search);
+let root: Root | null = null;
 
-// 攔截 OBR Modal 廣播視窗，直接渲染，不經過 Router
-if (params.get("view") === "legacy-reader") {
-    createRoot(document.getElementById("root")!).render(
-        <ThemeProvider theme={darkTheme}>
-            <CssBaseline />
-            <LegacyReaderModal />
-        </ThemeProvider>
-    );
-} else {
-    createRoot(document.getElementById("root")!).render(
-        <StrictMode>
-            <BrowserRouter>
-                <ExtensionMultiplexer />
-            </BrowserRouter>
-        </StrictMode>
-    );
-}
 function ExtensionMultiplexer() {
     const [searchParams] = useSearchParams();
     const [ready, setReady] = useState(false);
     const [themeMode, setThemeMode] = useState<"DARK" | "LIGHT">("DARK");
+    
     if (searchParams.get("view") === "legacy-reader") {
         return <LegacyReaderModal />;
     }
+    
     useEffect(() => {
         if (!ready) return;
         try {
@@ -55,20 +40,17 @@ function ExtensionMultiplexer() {
             });
         } catch (error) {
             log_error(error);
-            // TODO: Handle the error gracefully
-            // current error: "Uncaught (in promise) Error: Unable to send message: not ready"
             setReady(false);
         }
     }, [searchParams, ready]);
 
     useEffect(() => {
-        // Mount audio unlock listener on init
         setupAudioUnlock();
-        
         return OBR.onReady(() => {
             setReady(true);
         });
     }, []);
+
     const children = useMemo(() => {
         if (searchParams.get("obrref")) {
             return (
@@ -88,7 +70,6 @@ function ExtensionMultiplexer() {
                                     path="new-spell-modal/:spellID?"
                                     element={<NewSpellModal />}
                                 />
-                                
                             </Routes>
                         </Box>
                     </ThemeProvider>
@@ -108,10 +89,26 @@ function ExtensionMultiplexer() {
     return children;
 }
 
-createRoot(document.getElementById("root")!).render(
-    <StrictMode>
-        <BrowserRouter>
-            <ExtensionMultiplexer />
-        </BrowserRouter>
-    </StrictMode>
-);
+const params = new URLSearchParams(window.location.search);
+const rootElement = document.getElementById("root") as HTMLElement;
+
+if (!root) {
+    root = createRoot(rootElement);
+}
+
+if (params.get("view") === "legacy-reader") {
+    root.render(
+        <ThemeProvider theme={darkTheme}>
+            <CssBaseline />
+            <LegacyReaderModal />
+        </ThemeProvider>
+    );
+} else {
+    root.render(
+        <StrictMode>
+            <BrowserRouter>
+                <ExtensionMultiplexer />
+            </BrowserRouter>
+        </StrictMode>
+    );
+}

@@ -12,7 +12,6 @@ const SHOP_EVENT_CHANNEL = "com.yourname.character-sheet-extension/shop-events";
 const META_ID = "com.yourname.character-sheet-extension/metadata";
 const CURR_ID = "com.yourname.character-sheet-extension/currency";
 
-// Update rarity and category constants
 const RARITY_COLORS: Record<string, string> = {
     none: "text-mirage-900 dark:text-mirage-50",
     common: "text-slate-600 dark:text-slate-300",
@@ -48,6 +47,21 @@ function playClickSound() { try { const audio = new Audio('/click.mp3'); audio.v
 function playLootOpenSound() { try { const audio = new Audio('/loot_open.mp3'); audio.volume = 0.3; audio.play().catch(() => { }); } catch (e) { } }
 function playLootTakeSound() { try { const audio = new Audio('/loot_take.mp3'); audio.volume = 0.3; audio.play().catch(() => { }); } catch (e) { } }
 
+// 折疊說明的專屬元件
+const CollapsibleDescription = ({ text }: { text?: string }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+    if (!text) return null;
+    return (
+        <div
+            onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
+            className={`mt-1.5 text-sm text-mirage-500 whitespace-pre-wrap break-words cursor-pointer hover:text-mirage-400 transition-colors ${!isExpanded ? "line-clamp-2 overflow-hidden" : ""}`}
+            title={!isExpanded ? "點擊展開說明" : "點擊收起說明"}
+        >
+            {text}
+        </div>
+    );
+};
+
 export default function LootTab() {
     const { loots, logs, isGM, saveLoots } = useStoryData();
     const [sourceModalOpen, setSourceModalOpen] = useState(false);
@@ -68,6 +82,8 @@ export default function LootTab() {
     const [confirmDeleteSource, setConfirmDeleteSource] = useState<string | null>(null);
     const [confirmDeleteItem, setConfirmDeleteItem] = useState<string | null>(null);
 
+    const [processingItems, setProcessingItems] = useState<Record<string, boolean>>({});
+
     const fetchTokenData = async (tokenId: string) => {
         const items = await OBR.scene.items.getItems([tokenId]);
         if (items.length > 0) {
@@ -77,8 +93,16 @@ export default function LootTab() {
             const currency = rawCurr || { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 };
             setActiveTokenGold((currency.cp / 100) + (currency.sp / 10) + (currency.ep / 2) + (currency.gp || 0) + (currency.pp * 10));
 
-            const currentW = meta.weight || 0;
-            const maxW = meta.carryingCapacity || 0;
+            const rawInv = token.metadata["com.yourname.character-sheet-extension/inventory"] || meta.inventory || [];
+            const inventory = Array.isArray(rawInv) ? rawInv : [];
+            const itemsWeight = inventory.reduce((acc: number, i: any) => acc + ((i.weight || 0) * (i.quantity || 0)), 0);
+            const activeContainersWeight = INVENTORY_CATEGORIES.reduce((acc, cat) => inventory.some((i: any) => i.category === cat.id) ? acc + cat.weight : acc, 0);
+            const coinWeight = ((currency.cp || 0) + (currency.sp || 0) + (currency.ep || 0) + (currency.gp || 0) + (currency.pp || 0)) / 50;
+            const currentW = +(itemsWeight + activeContainersWeight + coinWeight).toFixed(1);
+            
+            const abilities = meta.abilities || { str: 10 };
+            const maxW = (abilities.str || 10) * 15;
+
             setActiveTokenWeight({ current: currentW, max: maxW });
         }
     };
@@ -86,7 +110,7 @@ export default function LootTab() {
     useEffect(() => {
         const updateActiveToken = async (selection: string[] | undefined | null) => {
             const safeSelection = selection || [];
-            if (safeSelection.length !== 1) { setActiveTokenId(null); setActiveTokenName("沒有人"); setActiveTokenGold(null); setActiveTokenWeight(null); return; }
+            if (safeSelection.length !== 1) { setActiveTokenId(null); setActiveTokenName("請點選角色"); setActiveTokenGold(null); setActiveTokenWeight(null); return; }
             const items = await OBR.scene.items.getItems([safeSelection[0]]);
             if (items.length > 0) {
                 setActiveTokenId(items[0].id); setActiveTokenName((items[0] as any).text?.plainText || items[0].name || "未命名");
@@ -97,6 +121,17 @@ export default function LootTab() {
         const unsub = OBR.player.onChange((player) => updateActiveToken(player.selection));
         return () => unsub();
     }, []);
+
+    useEffect(() => {
+        if (!activeTokenId) return;
+        const unsubItems = OBR.scene.items.onChange((items) => {
+            const updatedToken = items.find(i => i.id === activeTokenId);
+            if (updatedToken) {
+                fetchTokenData(activeTokenId);
+            }
+        });
+        return () => unsubItems();
+    }, [activeTokenId]);
 
     useEffect(() => {
         const handleLootResponses = async (message: any) => {
@@ -110,7 +145,6 @@ export default function LootTab() {
                 setToastMsg({ text: data.message, type: "success" }); 
                 if(activeTokenId) fetchTokenData(activeTokenId); 
 
-                // Reduce stock automatically based on response
                 saveLoots(loots.map(s => {
                     if (s.id !== data.sourceId) return s;
                     const updatedItems = s.items.map(i => {
@@ -207,10 +241,14 @@ export default function LootTab() {
     };
 
     const handleTake = async (sourceId: string, item: LootItem) => {
+        if (processingItems[item.id]) return;
         playClickSound();
         if (!item.isInfinite && item.quantity <= 0) { setToastMsg({ text: "此戰利品已被拿完！", type: "error" }); setTimeout(() => setToastMsg(null), 3000); return; }
-        if (!activeTokenId) { setToastMsg({ text: "請先在畫面上點選要拿取物品的角色代幣！", type: "error" }); setTimeout(() => setToastMsg(null), 3000); return; }
+        if (!activeTokenId) { setToastMsg({ text: "請先在畫面上點選要拾取的角色！", type: "error" }); setTimeout(() => setToastMsg(null), 3000); return; }
+        
+        setProcessingItems(prev => ({ ...prev, [item.id]: true }));
         OBR.broadcast.sendMessage(SHOP_EVENT_CHANNEL, { type: "LOOT_REQUEST", transactionId: Math.random().toString(36).substring(2, 9), sourceId, item, cost: 0, quantity: 1, targetTokenId: activeTokenId }, { destination: "ALL" });
+        setTimeout(() => setProcessingItems(prev => ({ ...prev, [item.id]: false })), 1500);
     };
 
     const handleExportAllLoots = () => {
@@ -247,19 +285,19 @@ export default function LootTab() {
             <div className="flex items-center gap-2 p-3 mb-2 bg-transparent border-b border-mirage-200/50 dark:border-mirage-800/50">
                 <span className="text-lg font-black truncate flex-1">
                     <span className="text-[#9c81d8] mr-2">{activeTokenName}</span>
-                    <span className="text-[13px] text-mirage-400 font-bold">{activeScenarioText}</span>
+                    <span className="text-[15px] text-mirage-400 font-bold">{activeScenarioText}</span>
                 </span>
             </div>
 
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pr-2">
                     {activeTokenGold !== null && (
-                        <span className="flex items-center gap-1.5 text-xs font-bold text-amber-500 bg-amber-500/10 px-2 py-1 rounded-full border border-amber-500/20 shadow-sm shrink-0">
+                        <span className="flex items-center gap-1.5 text-[11px] font-bold text-amber-400 bg-amber-500/10 px-2 py-1.5 rounded-full border border-amber-500/20 shadow-sm shrink-0">
                             <FaCoins className="w-3.5 h-3.5" /> {activeTokenGold.toFixed(2)} GP
                         </span>
                     )}
                     {activeTokenWeight !== null && (
-                        <span className="flex items-center gap-1.5 text-xs font-bold text-blue-400 bg-blue-400/10 px-2 py-1 rounded-full border border-blue-400/20 shadow-sm shrink-0">
+                        <span className="flex items-center gap-1.5 text-[11px] font-bold text-blue-300 bg-blue-400/10 px-2 py-1.5 rounded-full border border-blue-400/20 shadow-sm shrink-0">
                             <FaWeightHanging className="w-3.5 h-3.5" /> {activeTokenWeight.current} / {activeTokenWeight.max} lb
                         </span>
                     )}
@@ -304,12 +342,12 @@ export default function LootTab() {
                                 </div>
                                 {isGM && (
                                     <div className="flex items-center gap-1 bg-panel-base rounded-full px-1 py-0.5 shadow-inner border border-panel-inactive/50" onClick={e => e.stopPropagation()}>
-                                        <button onClick={(e) => { e.stopPropagation(); handleRandomLoot(source.id); }} className="p-1.5 text-indigo-400 hover:text-white outline-none" title="隨機掉落"><FaDiceD20 className="w-3.5 h-3.5" /></button>
-                                        <button onClick={(e) => { e.stopPropagation(); handleToggleRevealAll(source.id, !allRevealed); }} className={`p-1.5 outline-none ${allRevealed ? "text-red-400 hover:text-white" : "text-emerald-400 hover:text-white"}`} title={allRevealed ? "全部隱藏" : "全部揭露"}>{allRevealed ? <FaLock className="w-3.5 h-3.5" /> : <FaUnlock className="w-3.5 h-3.5" />}</button>
+                                        <button onClick={(e) => { e.stopPropagation(); handleRandomLoot(source.id); }} className="p-1.5 text-rose-400 hover:text-white outline-none" title="隨機掉落"><FaDiceD20 className="w-3.5 h-3.5" /></button>
+                                        <button onClick={(e) => { e.stopPropagation(); handleToggleRevealAll(source.id, !allRevealed); }} className={`p-1.5 outline-none ${allRevealed ? "text-red-400 hover:text-white" : "text-emerald-300 hover:text-white"}`} title={allRevealed ? "全部隱藏" : "全部揭露"}>{allRevealed ? <FaLock className="w-3.5 h-3.5" /> : <FaUnlock className="w-3.5 h-3.5" />}</button>
                                         <div className="w-px h-3 bg-gray-600 mx-0.5"></div>
                                         <button onClick={() => saveLoots(loots.map(s => s.id === source.id ? { ...s, isVisible: !s.isVisible } : s))} className={`p-1.5 outline-none rounded-full ${source.isVisible ? "text-panel-active" : "text-gray-500 hover:text-white"}`} title={source.isVisible ? "隱藏來源" : "顯示來源"}>{source.isVisible ? <FaEye className="w-3.5 h-3.5" /> : <FaEyeSlash className="w-3.5 h-3.5" />}</button>
                                         <button onClick={() => { setEditingSource(source); setFormSource(source); setSourceModalOpen(true); }} className="p-1.5 text-gray-400 hover:text-white outline-none" title="編輯來源"><FaPencil className="w-3.5 h-3.5" /></button>
-                                        <button onClick={() => confirmDeleteSource === source.id ? saveLoots(loots.filter(s => s.id !== source.id)) : setConfirmDeleteSource(source.id)} onMouseLeave={() => setConfirmDeleteSource(null)} className={`p-1.5 outline-none ${confirmDeleteSource === source.id ? "text-red-500" : "text-gray-400 hover:text-red-500"}`} title="刪除來源">{confirmDeleteSource === source.id ? <FaXmark className="w-3.5 h-3.5" /> : <FaTrash className="w-3.5 h-3.5" />}</button>
+                                        <button onClick={() => confirmDeleteSource === source.id ? saveLoots(loots.filter(s => s.id !== source.id)) : setConfirmDeleteSource(source.id)} onMouseLeave={() => setConfirmDeleteSource(null)} className={`p-1.5 outline-none ${confirmDeleteSource === source.id ? "text-red-500" : "text-gray-400 hover:text-red-500"}`}>{confirmDeleteSource === source.id ? <FaXmark className="w-3.5 h-3.5" /> : <FaTrash className="w-3.5 h-3.5" />}</button>
                                     </div>
                                 )}
                             </div>
@@ -326,7 +364,7 @@ export default function LootTab() {
                                     
                                     {isGM && (
                                         <div className="mt-2 mb-1 px-1 flex justify-between items-end border-b border-panel-inactive/30 pb-1">
-                                            <span className="text-[10px] font-bold text-amber-500">掉落區 (玩家可見)</span>
+                                            <span className="text-[15px] font-bold text-amber-400">掉落區</span>
                                         </div>
                                     )}
                                     {source.items.filter(i => i.isRevealed).map(item => {
@@ -335,23 +373,32 @@ export default function LootTab() {
                                             <div key={item.id} className={`group flex items-center justify-between p-2 rounded-xl bg-panel-base border transition-colors shadow-sm ${isSoldOut ? "border-transparent opacity-50" : "border-panel-inactive hover:border-gray-600"}`}>
                                                 <div className="flex flex-col min-w-0 flex-1 pr-2">
                                                     <div className="flex items-center gap-1.5 truncate">
-                                                        <span className={`font-bold text-[16px] truncate ${RARITY_COLORS[item.rarity || 'none']}`}>{item.name}</span>
-                                                        {isSoldOut && <span className="text-[9px] bg-red-900/50 text-red-400 px-1 py-0.5 rounded font-black shadow-sm shrink-0">已取完</span>}
+                                                        <span className={`font-bold text-[18px] truncate ${RARITY_COLORS[item.rarity || 'none']}`}>{item.name}</span>
+                                                        {isSoldOut && <span className="text-[11px] bg-red-900/50 text-red-400 px-1 py-0.5 rounded font-black shadow-sm shrink-0">已取完</span>}
                                                     </div>
-                                                    <div className="flex items-center gap-2 mt-0.5 text-[11px] text-gray-400 font-bold">
-                                                        <span className="text-amber-500">{item.cost} GP</span><span>•</span><span>{item.weight} lb</span><span>•</span><span>{item.isInfinite ? "無限數量" : `剩餘: ${item.quantity}`}</span>
+                                                    <div className="flex items-center gap-3 mt-1 text-[13px] text-gray-400 font-bold">
+                                                        <span className="text-amber-400">{item.cost} GP</span><span>•</span><span>{item.weight} lb</span><span>•</span><span>{item.isInfinite ? "無限" : `剩餘: ${item.quantity}`}</span>
                                                     </div>
-                                                    {item.description && <p className="mt-1.5 text-sm text-mirage-500 whitespace-pre-wrap break-words">{item.description}</p>}
+                                                    <CollapsibleDescription text={item.description} />
                                                 </div>
                                                 {isGM ? (
-                                                    <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0 bg-panel-content rounded-full p-0.5 shadow-sm border border-panel-inactive">
-                                                        <button onClick={() => saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.map(i => i.id === item.id ? { ...i, isRevealed: false } : i) } : s))} className="p-1.5 outline-none rounded-full text-panel-active" title="隱藏戰利品"><FaEye className="w-3 h-3" /></button>
-                                                        <button onClick={() => { setTargetSourceId(source.id); setEditingItem(item); setFormItem(item); setItemModalOpen(true); playClickSound(); }} className="p-1.5 text-gray-400 hover:text-white outline-none"><FaPencil className="w-3 h-3" /></button>
-                                                        <button onClick={() => confirmDeleteItem === item.id ? saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.filter(i => i.id !== item.id) } : s)) : setConfirmDeleteItem(item.id)} onMouseLeave={() => setConfirmDeleteItem(null)} className={`p-1.5 outline-none ${confirmDeleteItem === item.id ? "text-red-500" : "text-gray-400 hover:text-red-500"}`}>{confirmDeleteItem === item.id ? <FaXmark className="w-3 h-3" /> : <FaTrash className="w-3 h-3" />}</button>
+                                                    <div className="flex flex-col gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0 ml-2">
+                                                        <div className="flex items-center justify-between w-[84px] bg-panel-content rounded-full p-0.5 shadow-sm border border-panel-inactive self-end mt-1">
+                                                            <button onClick={() => saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.map(i => i.id === item.id ? { ...i, quantity: Math.max(0, i.quantity - 1) } : i) } : s))} className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white font-bold outline-none">-</button>
+                                                            <span className="text-xs text-white font-bold text-center flex-1">{item.quantity}</span>
+                                                            <button onClick={() => saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.map(i => i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i) } : s))} className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white font-bold outline-none">+</button>
+                                                        </div>
+                                                        <div className="flex items-center justify-between w-[84px] bg-panel-content rounded-full p-0.5 shadow-sm border border-panel-inactive self-end">
+                                                            <button onClick={() => saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.map(i => i.id === item.id ? { ...i, isRevealed: false } : i) } : s))} className="w-6 h-6 outline-none flex justify-center items-center text-panel-active" title="隱藏戰利品"><FaEye className="w-3.5 h-3.5" /></button>
+                                                            <button onClick={() => { setTargetSourceId(source.id); setEditingItem(item); setFormItem(item); setItemModalOpen(true); playClickSound(); }} className="w-6 h-6 text-gray-400 hover:text-white outline-none flex justify-center items-center"><FaPencil className="w-3.5 h-3.5" /></button>
+                                                            <button onClick={() => confirmDeleteItem === item.id ? saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.filter(i => i.id !== item.id) } : s)) : setConfirmDeleteItem(item.id)} onMouseLeave={() => setConfirmDeleteItem(null)} className={`w-6 h-6 outline-none flex justify-center items-center ${confirmDeleteItem === item.id ? "text-red-500" : "text-gray-400 hover:text-red-500"}`}>{confirmDeleteItem === item.id ? <FaXmark className="w-3.5 h-3.5" /> : <FaTrash className="w-3.5 h-3.5" />}</button>
+                                                        </div>
                                                     </div>
                                                 ) : (
                                                     <div className="flex flex-col items-end gap-2 shrink-0 ml-2 pt-1 border-l border-panel-inactive pl-3">
-                                                        <button disabled={isSoldOut} onClick={() => handleTake(source.id, item)} className={`px-4 py-1.5 w-full rounded-lg text-xs font-bold transition-all outline-none shrink-0 ${isSoldOut ? "bg-panel-inactive text-gray-500" : "bg-panel-active text-white shadow-sm hover:opacity-80"}`}>拾取</button>
+                                                        <button disabled={isSoldOut || processingItems[item.id]} onClick={() => handleTake(source.id, item)} className={`py-1.5 w-20 text-center rounded-lg text-xs font-bold transition-all outline-none shrink-0 ${isSoldOut ? "bg-panel-inactive text-gray-500 cursor-not-allowed" : processingItems[item.id] ? "bg-gray-600 text-gray-400 cursor-wait" : "bg-panel-active text-white shadow-sm hover:opacity-80"}`}>
+                                                            {processingItems[item.id] ? "處理中" : "拾取"}
+                                                        </button>
                                                     </div>
                                                 )}
                                             </div>
@@ -360,7 +407,7 @@ export default function LootTab() {
 
                                     {isGM && source.items.some(i => !i.isRevealed) && (
                                         <div className="mt-4 mb-1 px-1 flex justify-between items-end border-b border-panel-inactive/30 pb-1">
-                                            <span className="text-[10px] font-bold text-gray-500">DM 戰利品池 (未揭露)</span>
+                                            <span className="text-[15px] font-bold text-gray-300">戰利品池</span>
                                         </div>
                                     )}
                                     {isGM && source.items.filter(i => !i.isRevealed).map(item => {
@@ -368,17 +415,25 @@ export default function LootTab() {
                                             <div key={item.id} className="group flex items-center justify-between p-2 rounded-xl bg-black/20 border border-transparent hover:border-gray-600 transition-colors shadow-sm opacity-80">
                                                 <div className="flex flex-col min-w-0 flex-1 pr-2">
                                                     <div className="flex items-center gap-1.5 truncate">
-                                                        <span className="text-[9px] bg-mirage-800 text-mirage-400 px-1 py-0.5 rounded font-black shrink-0">未揭露</span>
-                                                        <span className={`font-bold text-[16px] truncate ${RARITY_COLORS[item.rarity || 'none']}`}>{item.name}</span>
+                                                        <span className="text-[13px] bg-[#9c81d8] text-mirage-400 px-1 py-0.5 rounded font-black shrink-0">隱藏</span>
+                                                        <span className={`font-bold text-[18px] truncate ${RARITY_COLORS[item.rarity || 'none']}`}>{item.name}</span>
                                                     </div>
-                                                    <div className="flex items-center gap-2 mt-0.5 text-[11px] text-gray-400 font-bold">
-                                                        <span className="text-amber-500">{item.cost} GP</span><span>•</span><span>{item.weight} lb</span><span>•</span><span>{item.isInfinite ? "無限數量" : `剩餘: ${item.quantity}`}</span>
+                                                    <div className="flex items-center gap-3 mt-1 text-[13px] text-gray-400 font-bold">
+                                                        <span className="text-amber-400">{item.cost} GP</span><span>•</span><span>{item.weight} lb</span><span>•</span><span>{item.isInfinite ? "無限" : `剩餘: ${item.quantity}`}</span>
                                                     </div>
+                                                    <CollapsibleDescription text={item.description} />
                                                 </div>
-                                                <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0 bg-panel-content rounded-full p-0.5 shadow-sm border border-panel-inactive">
-                                                    <button onClick={() => saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.map(i => i.id === item.id ? { ...i, isRevealed: true } : i) } : s))} className="p-1.5 outline-none rounded-full text-gray-500 hover:text-white" title="揭露戰利品給玩家"><FaEyeSlash className="w-3 h-3" /></button>
-                                                    <button onClick={() => { setTargetSourceId(source.id); setEditingItem(item); setFormItem(item); setItemModalOpen(true); playClickSound(); }} className="p-1.5 text-gray-400 hover:text-white outline-none"><FaPencil className="w-3 h-3" /></button>
-                                                    <button onClick={() => confirmDeleteItem === item.id ? saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.filter(i => i.id !== item.id) } : s)) : setConfirmDeleteItem(item.id)} onMouseLeave={() => setConfirmDeleteItem(null)} className={`p-1.5 outline-none ${confirmDeleteItem === item.id ? "text-red-500" : "text-gray-400 hover:text-red-500"}`}>{confirmDeleteItem === item.id ? <FaXmark className="w-3 h-3" /> : <FaTrash className="w-3 h-3" />}</button>
+                                                <div className="flex flex-col gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0 ml-2">
+                                                    <div className="flex items-center justify-between w-[84px] bg-panel-content rounded-full p-0.5 shadow-sm border border-panel-inactive self-end mt-1">
+                                                        <button onClick={() => saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.map(i => i.id === item.id ? { ...i, quantity: Math.max(0, i.quantity - 1) } : i) } : s))} className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white font-bold outline-none">-</button>
+                                                        <span className="text-xs text-white font-bold text-center flex-1">{item.quantity}</span>
+                                                        <button onClick={() => saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.map(i => i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i) } : s))} className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white font-bold outline-none">+</button>
+                                                    </div>
+                                                    <div className="flex items-center justify-between w-[84px] bg-panel-content rounded-full p-0.5 shadow-sm border border-panel-inactive self-end">
+                                                        <button onClick={() => saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.map(i => i.id === item.id ? { ...i, isRevealed: true } : i) } : s))} className="w-6 h-6 outline-none flex justify-center items-center text-gray-500 hover:text-white" title="揭露戰利品給玩家"><FaEyeSlash className="w-3.5 h-3.5" /></button>
+                                                        <button onClick={() => { setTargetSourceId(source.id); setEditingItem(item); setFormItem(item); setItemModalOpen(true); playClickSound(); }} className="w-6 h-6 text-gray-400 hover:text-white outline-none flex justify-center items-center"><FaPencil className="w-3.5 h-3.5" /></button>
+                                                        <button onClick={() => confirmDeleteItem === item.id ? saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.filter(i => i.id !== item.id) } : s)) : setConfirmDeleteItem(item.id)} onMouseLeave={() => setConfirmDeleteItem(null)} className={`w-6 h-6 outline-none flex justify-center items-center ${confirmDeleteItem === item.id ? "text-red-500" : "text-gray-400 hover:text-red-500"}`}>{confirmDeleteItem === item.id ? <FaXmark className="w-3.5 h-3.5" /> : <FaTrash className="w-3.5 h-3.5" />}</button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         );
@@ -392,12 +447,12 @@ export default function LootTab() {
 
             {logModalOpen && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-                    <div className="w-full max-w-[400px] h-[60vh] flex flex-col shadow-2xl rounded-2xl bg-panel-content p-5 border border-panel-inactive">
+                    <div className="w-full max-w-[400px] h-[80vh] flex flex-col shadow-2xl rounded-2xl bg-panel-content p-5 border border-panel-inactive">
                         <h3 className="font-bold text-white mb-4">日誌</h3>
                         <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-2">
                             {logs.length === 0 ? <p className="text-xs text-gray-500 text-center mt-10">尚無紀錄</p> : logs.map(l => (
-                                <div key={l.id} className="bg-panel-base p-2.5 rounded-xl text-xs text-gray-300 shadow-sm border border-panel-inactive/50 flex flex-col gap-1">
-                                    <span className="text-[9px] text-gray-500">{new Date(l.time).toLocaleTimeString()}</span>{l.message}
+                                <div key={l.id} className="bg-panel-base p-2.5 rounded-xl text-[13px] text-gray-300 shadow-sm border border-panel-inactive/50 flex flex-col gap-1">
+                                    <span className="text-[10px] text-amber-400">{new Date(l.time).toLocaleTimeString()}</span>{l.message}
                                 </div>
                             ))}
                         </div>
@@ -432,7 +487,6 @@ export default function LootTab() {
                             <input autoFocus type="text" value={formItem.name || ""} onChange={(e) => setFormItem({ ...formItem, name: e.target.value })} placeholder="物品名稱" className="w-full bg-panel-base text-white text-sm font-bold rounded-xl p-2.5 outline-none border border-transparent focus:border-panel-active shadow-inner" />
                             <textarea value={formItem.description || ""} onChange={(e) => setFormItem({ ...formItem, description: e.target.value })} placeholder="物品說明..." className="w-full h-24 bg-panel-base text-gray-300 text-sm rounded-xl p-2.5 outline-none border border-transparent focus:border-panel-active resize-none no-scrollbar shadow-inner" />
                             
-                            {/* Rarity & Category Selectors for Loot */}
                             <div className="flex items-center gap-2">
                                 <select value={formItem.rarity || "none"} onChange={(e) => setFormItem({ ...formItem, rarity: e.target.value })} className={`flex-1 bg-panel-base text-xs font-bold rounded-xl p-2.5 outline-none border border-transparent focus:border-panel-active shadow-inner ${RARITY_COLORS[formItem.rarity || 'none']}`}>
                                     {Object.entries(RARITY_LABELS).map(([k, v]) => <option key={k} value={k} className={RARITY_COLORS[k]}>{v}</option>)}

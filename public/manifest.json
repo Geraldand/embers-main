@@ -1,14 +1,14 @@
 {
-    "name": "餘燼與故事!",
+    "name": "故事與書!",
     "version": "0.2.0",
     "manifest_version": 1,
     "author": "Armindo Flores",
     "icon": "/embers.svg",
     "homepage_url": "https://github.com/ArmindoFlores/embers",
     "background_url": "/background.html",
-    "description": "Use and create animated spell & ability effects for your games.",
+    "description": "一個為桌上角色扮演遊戲設計的故事與書籍管理工具，提供了豐富的功能來幫助遊戲主持人和玩家組織和呈現他們的冒險故事。",
     "action": {
-      "title": "餘燼與故事!",
+      "title": "故事與書!",
       "icon": "/embers.svg",
       "popover": "/",
       "height": 600,

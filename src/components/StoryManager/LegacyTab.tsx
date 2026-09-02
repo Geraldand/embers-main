@@ -170,7 +170,7 @@ export default function LegacyTab() {
                         </div>
                         {isGM && (
                             <div className="flex-none bg-[#2d3143] text-white p-4 border-t-2 border-panel-active flex flex-col gap-2 rounded-b-sm shadow-[0_-10px_20px_rgba(0,0,0,0.5)] z-10 w-full">
-                                <span className="text-[10px] text-gray-400 font-sans font-bold flex items-center gap-1.5"><FaPencil /> DM 控制台：即時編輯與隱藏資訊管理</span>
+                                <span className="text-[10px] text-gray-400 font-sans font-bold flex items-center gap-1.5"><FaPencil /> 編輯</span>
                                 <textarea
                                     value={readingLegacy.description}
                                     onChange={(e) => {

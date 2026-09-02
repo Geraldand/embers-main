@@ -35,6 +35,10 @@ export interface Parameter {
 export interface Spell {
     // The name of the effect to play
     name?: string;
+    
+    // Add level property for spell tier categorization
+    level?: number;
+    
     // Minimum number of targets
     minTargets?: number;
     // Maximum number of targets

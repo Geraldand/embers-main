@@ -57,7 +57,7 @@ export default function QuestTab() {
     return (
         <div className="relative px-1">
             <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold text-gray-300">冒險日誌</h3>
+                <h3 className="text-sm font-bold text-gray-300">還記得...</h3>
                 {isGM && (
                     <div className="flex items-center gap-2">
                         <button onClick={() => { setCategoryForm(categories); setCategoryModalOpen(true); playClickSound(); }} className="p-1.5 text-gray-400 hover:text-white bg-panel-inactive rounded-full transition-colors outline-none"><FaGear className="w-3.5 h-3.5"/></button>
@@ -86,7 +86,7 @@ export default function QuestTab() {
                                     <div key={quest.id} className={`relative p-3 rounded-xl bg-panel-content border transition-colors shadow-sm group ${quest.isCompleted ? "opacity-50 border-transparent hover:opacity-80" : "border-panel-inactive hover:border-gray-500"}`}>
                                         <div className="flex items-start gap-3">
                                             {quest.markerStyle !== "none" && (
-                                                <button onClick={() => { playQuestCheckSound(); toggleQuestCompletion(quest.id); }} className={`mt-0.5 shrink-0 w-4 h-4 rounded-[4px] border flex items-center justify-center transition-colors outline-none ${quest.isCompleted ? "bg-emerald-500 border-emerald-500 text-white" : "border-gray-500 hover:border-gray-300 text-transparent"}`}>
+                                                <button onClick={() => { playQuestCheckSound(); toggleQuestCompletion(quest.id); }} className={`mt-0.5 shrink-0 w-4 h-4 rounded-[4px] border flex items-center justify-center transition-colors outline-none ${quest.isCompleted ? "bg-amber-400 border-amber-500 text-white" : "border-gray-500 hover:border-gray-300 text-transparent"}`}>
                                                     <FaCheck className="w-2.5 h-2.5"/>
                                                 </button>
                                             )}

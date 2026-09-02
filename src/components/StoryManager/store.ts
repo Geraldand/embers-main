@@ -68,6 +68,13 @@ class StoryStore {
 
         OBR.broadcast.onMessage(SYNC_CHANNEL, async (msg) => {
             const payload = msg.data as any;
+            if (payload.type === "REQUEST_SHOPS") {
+                OBR.broadcast.sendMessage(SYNC_CHANNEL, {
+                    type: "SYNC_SHOPS",
+                    shops: this.data.shops
+                }, { destination: "REMOTE" }); // 修改此處：移除陣列，改為 "REMOTE"
+                return;
+            }
             if (payload.type === "REQUEST_SYNC" && this.isGM) {
                 OBR.broadcast.sendMessage(SYNC_CHANNEL, {
                     type: "SYNC_FULL_STATE", version: this.currentVersion, data: this.data, targetConnectionId: msg.connectionId
@@ -75,7 +82,7 @@ class StoryStore {
             } else if (payload.type === "SYNC_FULL_STATE" && !this.isGM) {
                 const myConnectionId = await OBR.player.getConnectionId();
                 if (payload.targetConnectionId && payload.targetConnectionId !== "ALL" && payload.targetConnectionId !== myConnectionId) return;
-                
+
                 if (this.currentVersion !== 0) {
                     const checkUnread = (oldArr: any[], newArr: any[]) => {
                         const oldMap = new Map(oldArr.map(i => [i.id, i]));
@@ -106,7 +113,7 @@ class StoryStore {
             if (!data || !this.isGM) return;
             const sender = (await OBR.party.getPlayers()).find(p => p.connectionId === msg.connectionId);
             const playerName = sender ? sender.name : "某人";
-            
+
             if (data.type === "PURCHASE_REQUEST") {
                 const shop = this.data.shops.find(s => s.id === data.shopId);
                 let isBoughtItem = false;
@@ -121,7 +128,7 @@ class StoryStore {
                     let newShop: Shop;
                     if (isBoughtItem) {
                         const newQuantity = item.quantity - data.quantity;
-                        const newBoughtItems = newQuantity > 0 
+                        const newBoughtItems = newQuantity > 0
                             ? shop.boughtItems!.map(i => i.id === item!.id ? { ...i, quantity: newQuantity } : i)
                             : shop.boughtItems!.filter(i => i.id !== item!.id);
                         newShop = { ...shop, boughtItems: newBoughtItems };
@@ -136,7 +143,8 @@ class StoryStore {
                     OBR.broadcast.sendMessage(SHOP_EVENT_CHANNEL, {
                         type: "PURCHASE_RESPONSE", success: true, transactionId: data.transactionId,
                         targetConnectionId: msg.connectionId, message: "購買成功！",
-                        item: item, quantity: data.quantity, cost: data.cost
+                        item: item, quantity: data.quantity, cost: data.cost,
+                        targetTokenId: data.targetTokenId // 補上遺漏的目標代幣ID
                     }, { destination: "ALL" });
                 } else {
                     OBR.broadcast.sendMessage(SHOP_EVENT_CHANNEL, {
@@ -157,7 +165,8 @@ class StoryStore {
                     OBR.broadcast.sendMessage(SHOP_EVENT_CHANNEL, {
                         type: "LOOT_RESPONSE", success: true, transactionId: data.transactionId,
                         targetConnectionId: msg.connectionId, message: "拾取成功！",
-                        item: item, quantity: data.quantity
+                        item: item, quantity: data.quantity,
+                        targetTokenId: data.targetTokenId // 補上遺漏的目標代幣ID
                     }, { destination: "ALL" });
                 } else {
                     OBR.broadcast.sendMessage(SHOP_EVENT_CHANNEL, {
@@ -172,7 +181,8 @@ class StoryStore {
                     const bought = shop.boughtItems ? [...shop.boughtItems] : [];
                     const existingIndex = bought.findIndex(i => i.name === data.item.name);
                     if (existingIndex !== -1) bought[existingIndex].quantity += data.quantity;
-                    else bought.push({ ...data.item, quantity: data.quantity, id: data.item.id || Math.random().toString(36).substring(2, 9) });
+                    // 補上 isVisible: true 確保玩家賣出的二手商品預設為可見
+                    else bought.push({ ...data.item, quantity: data.quantity, id: data.item.id || Math.random().toString(36).substring(2, 9), isVisible: true });
 
                     const newShop = { ...shop, boughtItems: bought };
                     this.saveShops(this.data.shops.map(s => s.id === shop.id ? newShop : s));
@@ -204,10 +214,10 @@ class StoryStore {
         if (!this.isGM) return;
         const legacy = this.data.legacies.find(l => l.id === legacyId);
         if (legacy) {
-            OBR.broadcast.sendMessage(SYNC_CHANNEL, { 
-                type: "FORCE_OPEN_LEGACY", 
+            OBR.broadcast.sendMessage(SYNC_CHANNEL, {
+                type: "FORCE_OPEN_LEGACY",
                 legacy: legacy,
-                targets: targetPlayerIds 
+                targets: targetPlayerIds
             }, { destination: "ALL" });
         }
     }
@@ -232,7 +242,7 @@ class StoryStore {
     saveShops = (newShops: Shop[]) => { if (!this.isGM) return; this.data.shops = newShops; this.publishData(); };
     saveLoots = (newLoots: LootSource[]) => { if (!this.isGM) return; this.data.loots = newLoots; this.publishData(); };
     saveLegacies = (newLegacies: LegacyItem[]) => { if (!this.isGM) return; this.data.legacies = newLegacies; this.publishData(); };
-    
+
     importData = (jsonData: any) => {
         if (!this.isGM || !jsonData) return;
         if (jsonData.quests && jsonData.recaps && jsonData.shops) {
@@ -288,7 +298,7 @@ export function useStoryData() {
         return storyStore.subscribe(updateState);
     }, []);
 
-    return { 
+    return {
         categories, quests, recaps, shops, loots, legacies, logs, isGM, unread,
         saveQuestCategories: storyStore.saveQuestCategories,
         saveQuests: storyStore.saveQuests, saveRecaps: storyStore.saveRecaps,
