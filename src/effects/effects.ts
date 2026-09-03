@@ -13,7 +13,7 @@ export const effects = effectsJSON as unknown as Effects;
 export const effectNames = gatherEffectNames();
 export const effectMetadataKey = `${APP_KEY}/effect-id`;
 export const spellMetadataKey = `${APP_KEY}/spell-id`;
-
+const renderedUrls = new Set<string>();
 function isEffect(obj: unknown): obj is Effect {
     const effectObject = obj as Effect;
     return effectObject.basename != undefined && effectObject.type != undefined && effectObject.variants != undefined;
@@ -84,7 +84,7 @@ export function getEffectURL(name: string, variantName: string, variantIndex?: n
     return `${ASSET_LOCATION}/${effect.basename}_${variantPath}.webm`;
 }
 
-export function urlVariant(url: string, variant?: number) {
+export function urlVariant(url: string, _variant?: number) {
     // 移除 ?variant 參數，徹底杜絕 Cache Miss 導致的載入延遲
     // OBR 在建立新 Item 時，只要 URL 相同就能瞬間從記憶體渲染並自動從頭播放
     return url;
@@ -127,9 +127,24 @@ export function getDistance(source: Vector2, destination: Vector2) {
 
 export async function registerEffect(images: Image[], duration: number, spellCaster?: string) {
     if (duration > 0) {
+        // 判斷是否為初次載入未解碼過的 WebM
+        let isFirstLoad = false;
+        for (const img of images) {
+            if (!renderedUrls.has(img.image.url)) {
+                isFirstLoad = true;
+                renderedUrls.add(img.image.url);
+            }
+        }
+
+        // 核心解法：
+        // 1. 初次載入給予 400ms 緩衝，抵銷瀏覽器抓取與解碼的時間。
+        // 2. 後續快取載入固定給予 150ms 緩衝，確保動畫最後幾幀絕對不被切掉。
+        const loadBuffer = isFirstLoad ? 400 : 150;
+
         await OBR.scene.local.addItems(images);
-        // 🌟 對策：將過度提早的 80ms 縮減為 10ms，確保動畫最後一幀不會被切斷
-        const waitTime = Math.max(0, duration - 10);
+
+        // 移除原本提早刪除的 -80 或 -10，改為加上緩衝時間
+        const waitTime = Math.max(0, duration + loadBuffer);
         await waitMs(waitTime);
         await OBR.scene.local.deleteItems(images.map(image => image.id));
     } 

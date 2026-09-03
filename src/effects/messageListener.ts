@@ -28,7 +28,7 @@ export interface Interaction {
 }
 
 const effectRegister = new Map<string, number>();
-
+const playedEffects = new Set<string>();
 async function createItemInteractions({ ids, count }: InteractionData, localOnly: boolean): Promise<Interaction> {
     const originalItems = await OBR.scene.items.getItems(ids);
     const localItems = originalItems.map(item => ({...item, id: `embers-copy-${item.id}`, visible: true })).filter(item => isImage(item));
@@ -57,7 +57,6 @@ async function createItemInteractions({ ids, count }: InteractionData, localOnly
     // Register a callback every "updateDelay" milliseconds
     let latestItems: Image[] = [];
 
-    let animationFrameId: number;
     let lastUpdateTime = 0;
     
     const afterDelay = (timestamp: number) => {
@@ -88,7 +87,7 @@ async function createItemInteractions({ ids, count }: InteractionData, localOnly
         }
 
         if (count > 0) {
-            animationFrameId = requestAnimationFrame(afterDelay);
+            requestAnimationFrame(afterDelay);
         } else {
             stop();
             if (!localOnly) {
@@ -108,7 +107,7 @@ async function createItemInteractions({ ids, count }: InteractionData, localOnly
         }
     };
     
-    animationFrameId = requestAnimationFrame(afterDelay);
+    requestAnimationFrame(afterDelay);
 
     const registerUpdates = async (items: Image[], onUpdate: InteractionUpdateFunc) => {
         return new Promise<Image[]>(resolve => {
@@ -154,7 +153,12 @@ async function processInstruction(instruction: EffectInstruction, dpi: number, s
 
     const [playerId, playerRole] = await Promise.all([OBR.player.getId(), OBR.player.getRole()]);
     
-    // 👇 新增這段追蹤日誌 👇
+    // 判斷是否為首次播放該特效，用於音效同步
+    const isFirstLoad = instruction.id && !playedEffects.has(instruction.id);
+    if (instruction.id && isFirstLoad) {
+        playedEffects.add(instruction.id);
+    }
+
     console.log(`[Embers] 收到指令 ID: ${instruction.id || '無'}, 包含音效: ${instruction.sound || '無'}`);
 
     if (instruction.delay) {
@@ -165,7 +169,17 @@ async function processInstruction(instruction: EffectInstruction, dpi: number, s
 
     if (instruction.sound) {
         console.log(`[Embers] 觸發音效邏輯 ->`, instruction.sound);
-        playSpellSound(instruction.sound, instruction.duration, 1.0, instruction.volume); // 👈 加上 instruction.volume
+        
+        // 核心解法：初次載入動畫時，將音效強制延遲 350ms (配合上方 OBR 解碼 WebM 的預估時間)
+        const audioDelay = isFirstLoad ? 350 : 0;
+        
+        if (audioDelay > 0) {
+            setTimeout(() => {
+                playSpellSound(instruction.sound!, instruction.duration, 1.0, instruction.volume);
+            }, audioDelay);
+        } else {
+            playSpellSound(instruction.sound, instruction.duration, 1.0, instruction.volume);
+        }
     }
     // 👆 新增這段追蹤日誌 👆
 
@@ -312,7 +326,7 @@ async function processInstruction(instruction: EffectInstruction, dpi: number, s
                     instruction.layer,
                     instruction.zIndex,
                     variant,
-                    instruction.forceVariant,
+                    (instruction as any).forceVariant,
                     spellName,
                     spellCaster
                 );
@@ -364,7 +378,8 @@ export function setupMessageListener() {
 
         // 🌟 強制捕獲施法者 ID：使用快取的 party 資料，移除 await OBR.party.getPlayers() 的延遲
         if (!spellCaster) {
-            if (message.connectionId === OBR.player.connectionId) {
+            const myConnectionId = await OBR.player.getConnectionId();
+            if (message.connectionId === myConnectionId) {
                 spellCaster = playerId;
             } else {
                 const sender = cachedParty.find(p => p.connectionId === message.connectionId);
