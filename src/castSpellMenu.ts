@@ -5,13 +5,14 @@ import { APP_KEY } from "./config";
 import { MESSAGE_CHANNEL } from "./effects/messageListener";
 
 export function setupContextMenu(playerRole: "GM" | "PLAYER") {
+    // Prevent players from seeing the context menu option
+    if (playerRole !== "GM") {
+        return;
+    }
+
     const id = `${APP_KEY}/context-menu`;
 
     getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.PLAYERS_CAN_CAST_SPELLS).then(canCastSpells => {
-        if (!canCastSpells && playerRole !== "GM") {
-            return;
-        }
-
         OBR.contextMenu.create({
             id,
             icons: [

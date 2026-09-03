@@ -170,10 +170,12 @@ async function getPointerPosition(position: Vector2, snapToGrid: boolean) {
 }
 
 export function setupEffectsTool(playerRole: "GM" | "PLAYER", playerID: string) {
+    // Prevent players from seeing the tool
+    if (playerRole !== "GM") {
+        return undefined;
+    }
+
     getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.PLAYERS_CAN_CAST_SPELLS).then(canCastSpells => {
-        if (!canCastSpells && playerRole !== "GM") {
-            return;
-        }
         OBR.tool.create({
             id: toolID,
             defaultMode: effectsToolModeID,

@@ -64,7 +64,8 @@ export interface EffectBlueprint {
     disabled?: BlueprintValue<boolean>;
     // If specified, the chosen effect variant will always be this one, if it exists
     forceVariant?: BlueprintValue<number>;
-    sound?: BlueprintValue<string>; // <--- 新增這行
+    sound?: BlueprintValue<string>;
+    volume?: BlueprintValue<number>;
 }
 
 export interface ErrorOr<T> {

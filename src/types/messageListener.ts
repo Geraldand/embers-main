@@ -19,9 +19,9 @@ export interface EffectInstruction {
     for?: "ALL" | "CASTER" | "GM";
     instructions?: EffectInstruction[];
     
-    // 👇 新增這行：用來指定音效的檔名 (例如 "ice_hit.mp3")
     sound?: string; 
     volume?: number;
+    forceVariant?: number;
 }
 
 export interface InteractionData {

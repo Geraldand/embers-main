@@ -150,7 +150,6 @@ export function playSpellSound(soundUrl: string, durationMs?: number, playbackRa
     const now = Date.now();
     const lastPlay = soundLastPlayMap.get(soundUrl) ?? 0;
 
-    // 100ms 內同音效不重複觸發，解決複數目標音效重疊爆音
     if (now - lastPlay < 100) {
         return;
     }
@@ -162,8 +161,8 @@ export function playSpellSound(soundUrl: string, durationMs?: number, playbackRa
         const audio = new Audio(fullUrl);
         audio.playbackRate = playbackRate;
         
-        // 👇 若指令有指定音量就用指定的，否則用預設全域音量 0.09
-        audio.volume = volume !== undefined ? Math.max(0, Math.min(1, volume)) : 0.09; 
+        // Adjust the default volume here (e.g. change 0.09 to 0.04)
+        audio.volume = volume !== undefined ? Math.max(0, Math.min(1, volume)) : 0.04; 
 
         audio.play().catch(e => {
             console.warn(`[Embers] 音效播放被阻擋:`, e);
