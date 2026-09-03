@@ -122,7 +122,8 @@ export function setSelectedSpell(spellName: string) {
                 if (effect) {
                     for (const variant of Object.values(effect.variants)) {
                         for (const name of variant.name) {
-                            urls.add(`${ASSET_LOCATION}/${effect.basename}_${name}.webm?1`);
+                            // 🌟 對策：移除硬編碼的 ?1，與實際渲染的 URL 完全保持一致
+                            urls.add(`${ASSET_LOCATION}/${effect.basename}_${name}.webm`);
                         }
                     }
                 }

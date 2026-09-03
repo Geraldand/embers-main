@@ -85,10 +85,9 @@ export function getEffectURL(name: string, variantName: string, variantIndex?: n
 }
 
 export function urlVariant(url: string, variant?: number) {
-    if (variant == undefined) {
-        return url;
-    }
-    return `${url}?${variant}`;
+    // 移除 ?variant 參數，徹底杜絕 Cache Miss 導致的載入延遲
+    // OBR 在建立新 Item 時，只要 URL 相同就能瞬間從記憶體渲染並自動從頭播放
+    return url;
 }
 
 export function getVariantName(effectName: string, distance: number) {
@@ -129,13 +128,12 @@ export function getDistance(source: Vector2, destination: Vector2) {
 export async function registerEffect(images: Image[], duration: number, spellCaster?: string) {
     if (duration > 0) {
         await OBR.scene.local.addItems(images);
-        // 提前 80ms 刪除，防止 WebM 影片在 DOM 節點移除前觸發第二輪播放
-        const waitTime = Math.max(0, duration - 80);
+        // 🌟 對策：將過度提早的 80ms 縮減為 10ms，確保動畫最後一幀不會被切斷
+        const waitTime = Math.max(0, duration - 10);
         await waitMs(waitTime);
         await OBR.scene.local.deleteItems(images.map(image => image.id));
     } 
     else {
-        // duration <= 0 (包含 -1) 寫入全域地圖，成為持續型法術
         try {
             const summonRuleSetting = await getGlobalSettingsValue(GLOBAL_STORAGE_KEYS.SUMMONED_ENTITIES_RULE);
             const summonRule = summonRuleSetting || "caster"; 
@@ -192,6 +190,9 @@ export function buildEffectImage(
     // 只要 duration, baseDuration 或 loops 為 0 或負數，一律判定為持續型法術 (-1)
     if ((duration !== undefined && duration <= 0) || baseDuration <= 0 || loops === 0) {
         effectDuration = -1;
+    } else if (duration !== undefined && duration > 0) {
+        // 🌟 對策：優先使用 Blueprint 傳進來 (已加 300ms 緩衝) 的 duration
+        effectDuration = duration;
     } else {
         effectDuration = baseDuration * actualLoops;
     }
