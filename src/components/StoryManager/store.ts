@@ -1,12 +1,18 @@
-// src/components/StoryManager/store.ts
 import OBR from "@owlbear-rodeo/sdk";
 import { useState, useEffect } from "react";
+import LZString from "lz-string"; // Add lz-string for compression
 import { Quest, QuestCategory, Recap, Shop, LootSource, LegacyItem, LogEntry } from "./types";
 
 const LOCAL_STORAGE_KEY = "eu.armindo.embers/story-data";
 const META_VERSION_KEY = "eu.armindo.embers/story-version";
 const SYNC_CHANNEL = "eu.armindo.embers/story-sync";
 const SHOP_EVENT_CHANNEL = "com.yourname.character-sheet-extension/shop-events";
+
+// Helper function to compress and send sync messages
+const sendCompressedSync = (payload: any, options: { destination: "ALL" | "REMOTE" | "LOCAL" }) => {
+    const compressed = LZString.compressToUTF16(JSON.stringify(payload));
+    OBR.broadcast.sendMessage(SYNC_CHANNEL, compressed, options);
+};
 
 interface StoryData {
     questCategories: QuestCategory[];
@@ -56,27 +62,39 @@ class StoryStore {
             }
             this.publishData();
         } else {
-            OBR.broadcast.sendMessage(SYNC_CHANNEL, { type: "REQUEST_SYNC" }, { destination: "ALL" });
+            // Use the compressed sync helper
+            sendCompressedSync({ type: "REQUEST_SYNC" }, { destination: "ALL" });
         }
 
         OBR.room.onMetadataChange((meta) => {
             const newVersion = meta[META_VERSION_KEY] as number;
             if (!this.isGM && newVersion && newVersion > this.currentVersion) {
-                OBR.broadcast.sendMessage(SYNC_CHANNEL, { type: "REQUEST_SYNC" }, { destination: "ALL" });
+                // Use the compressed sync helper
+                sendCompressedSync({ type: "REQUEST_SYNC" }, { destination: "ALL" });
             }
         });
 
         OBR.broadcast.onMessage(SYNC_CHANNEL, async (msg) => {
-            const payload = msg.data as any;
+            let payload = msg.data as any;
+            if (typeof payload === "string") {
+                try {
+                    payload = JSON.parse(LZString.decompressFromUTF16(payload));
+                } catch (e) {
+                    console.warn("Failed to decompress broadcast message", e);
+                }
+            }
+
             if (payload.type === "REQUEST_SHOPS") {
-                OBR.broadcast.sendMessage(SYNC_CHANNEL, {
+                // Use the compressed sync helper
+                sendCompressedSync({
                     type: "SYNC_SHOPS",
                     shops: this.data.shops
-                }, { destination: "REMOTE" }); // 修改此處：移除陣列，改為 "REMOTE"
+                }, { destination: "REMOTE" });
                 return;
             }
             if (payload.type === "REQUEST_SYNC" && this.isGM) {
-                OBR.broadcast.sendMessage(SYNC_CHANNEL, {
+                // Use the compressed sync helper
+                sendCompressedSync({
                     type: "SYNC_FULL_STATE", version: this.currentVersion, data: this.data, targetConnectionId: msg.connectionId
                 }, { destination: "REMOTE" });
             } else if (payload.type === "SYNC_FULL_STATE" && !this.isGM) {
@@ -204,7 +222,8 @@ class StoryStore {
         this.currentVersion = Date.now();
         localStorage.setItem(`${LOCAL_STORAGE_KEY}/${OBR.room.id}`, JSON.stringify(this.data));
         await OBR.room.setMetadata({ [META_VERSION_KEY]: this.currentVersion });
-        OBR.broadcast.sendMessage(SYNC_CHANNEL, {
+        // Use the compressed sync helper
+        sendCompressedSync({
             type: "SYNC_FULL_STATE", version: this.currentVersion, data: this.data, targetConnectionId: "ALL"
         }, { destination: "ALL" });
         this.notify();
@@ -214,7 +233,8 @@ class StoryStore {
         if (!this.isGM) return;
         const legacy = this.data.legacies.find(l => l.id === legacyId);
         if (legacy) {
-            OBR.broadcast.sendMessage(SYNC_CHANNEL, {
+            // Use the compressed sync helper
+            sendCompressedSync({
                 type: "FORCE_OPEN_LEGACY",
                 legacy: legacy,
                 targets: targetPlayerIds
@@ -225,17 +245,18 @@ class StoryStore {
     updateLegacyLive = (legacy: LegacyItem) => {
         if (!this.isGM) return;
         this.saveLegacies(this.data.legacies.map(l => l.id === legacy.id ? legacy : l));
-        OBR.broadcast.sendMessage(SYNC_CHANNEL, { type: "UPDATE_LEGACY_CONTENT", legacy }, { destination: "ALL" });
+        // Use the compressed sync helper
+        sendCompressedSync({ type: "UPDATE_LEGACY_CONTENT", legacy }, { destination: "ALL" });
     }
 
     toggleQuestCompletion = (questId: string) => {
         if (this.isGM) {
             this.saveQuests(this.data.quests.map(q => q.id === questId ? { ...q, isCompleted: !q.isCompleted } : q));
         } else {
-            OBR.broadcast.sendMessage(SYNC_CHANNEL, { type: "TOGGLE_QUEST", questId }, { destination: "ALL" });
+            // Use the compressed sync helper
+            sendCompressedSync({ type: "TOGGLE_QUEST", questId }, { destination: "ALL" });
         }
     };
-
     saveQuestCategories = (newCats: QuestCategory[]) => { if (!this.isGM) return; this.data.questCategories = newCats; this.publishData(); };
     saveQuests = (newQuests: Quest[]) => { if (!this.isGM) return; this.data.quests = newQuests; this.publishData(); };
     saveRecaps = (newRecaps: Recap[]) => { if (!this.isGM) return; this.data.recaps = newRecaps; this.publishData(); };

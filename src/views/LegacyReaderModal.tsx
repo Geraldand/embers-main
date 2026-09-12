@@ -1,6 +1,7 @@
 // src/views/LegacyReaderModal.tsx
 import { useEffect, useState } from "react";
 import OBR from "@owlbear-rodeo/sdk";
+import LZString from "lz-string";
 import { LEGACY_THEMES } from "../components/StoryManager/constants";
 
 export default function LegacyReaderModal() {
@@ -15,7 +16,17 @@ export default function LegacyReaderModal() {
             }
 
             const unsub = OBR.broadcast.onMessage("eu.armindo.embers/story-sync", (msg) => {
-                const payload = msg.data as any;
+                let payload = msg.data as any;
+                
+                // Decompress data if it is a compressed string
+                if (typeof payload === "string") {
+                    try {
+                        payload = JSON.parse(LZString.decompressFromUTF16(payload));
+                    } catch (e) {
+                        console.warn("Failed to decompress broadcast message", e);
+                    }
+                }
+
                 if (payload.type === "UPDATE_LEGACY_CONTENT" || payload.type === "FORCE_OPEN_LEGACY") {
                     setLegacy(payload.legacy);
                     localStorage.setItem(`eu.armindo.embers/current-broadcast-legacy`, JSON.stringify(payload.legacy));

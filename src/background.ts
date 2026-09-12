@@ -1,4 +1,5 @@
 import OBR from "@owlbear-rodeo/sdk";
+import LZString from "lz-string";
 import { setupDefaultCasterMenuOption, setupEffectsTool } from "./effectsTool";
 import { sendSpellsUpdate, setupGMLocalSpells, setupPlayerLocalSpells } from "./effects/localSpells";
 import { constants } from "./constants";
@@ -213,7 +214,6 @@ function setup() {
         window.interactionRecord = new Map();
     }
 
-    // 解決動畫播放兩次的問題：清除舊的廣播監聽器，避免重複註冊
     if (unsubscribeMessageListener) {
         unsubscribeMessageListener();
     }
@@ -221,7 +221,17 @@ function setup() {
 
     let unsubscribe: (() => void) | null = null;
     OBR.broadcast.onMessage("eu.armindo.embers/story-sync", async (msg) => {
-        const payload = msg.data as any;
+        let payload = msg.data as any;
+        
+        // Decompress data if it is a compressed string
+        if (typeof payload === "string") {
+            try {
+                payload = JSON.parse(LZString.decompressFromUTF16(payload));
+            } catch (e) {
+                console.warn("Failed to decompress broadcast message", e);
+            }
+        }
+
         if (payload.type === "FORCE_OPEN_LEGACY") {
             const role = await OBR.player.getRole();
             const myId = await OBR.player.getId();
