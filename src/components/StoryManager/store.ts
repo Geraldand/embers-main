@@ -39,7 +39,30 @@ class StoryStore {
     listeners: (() => void)[] = [];
     currentVersion = 0;
     unread: Record<number, boolean> = { 0: false, 1: false, 2: false, 3: false };
+    saveSingleQuest = (quest: Quest) => {
+        if (this.isGM) {
+            const exists = this.data.quests.find(q => q.id === quest.id);
+            this.saveQuests(exists ? this.data.quests.map(q => q.id === quest.id ? quest : q) : [...this.data.quests, quest]);
+        } else {
+            sendCompressedSync({ type: "PLAYER_SAVE_QUEST", quest }, { destination: "ALL" });
+        }
+    };
 
+    deleteSingleQuest = (questId: string) => {
+        if (this.isGM) {
+            this.saveQuests(this.data.quests.filter(q => q.id !== questId));
+        } else {
+            sendCompressedSync({ type: "PLAYER_DELETE_QUEST", questId }, { destination: "ALL" });
+        }
+    };
+
+    saveCategoriesProxy = (cats: QuestCategory[]) => {
+        if (this.isGM) {
+            this.saveQuestCategories(cats);
+        } else {
+            sendCompressedSync({ type: "PLAYER_SAVE_CATEGORIES", cats }, { destination: "ALL" });
+        }
+    };
     init = async () => {
         if (!OBR.isReady) return;
         const role = await OBR.player.getRole();
@@ -123,6 +146,14 @@ class StoryStore {
                 window.dispatchEvent(new CustomEvent("force-open-legacy", { detail: payload.legacyId }));
             } else if (payload.type === "TOGGLE_QUEST" && this.isGM) {
                 this.saveQuests(this.data.quests.map(q => q.id === payload.questId ? { ...q, isCompleted: !q.isCompleted } : q));
+            } else if (payload.type === "PLAYER_SAVE_QUEST" && this.isGM) {
+                const incomingQuest = payload.quest;
+                const exists = this.data.quests.find(q => q.id === incomingQuest.id);
+                this.saveQuests(exists ? this.data.quests.map(q => q.id === incomingQuest.id ? incomingQuest : q) : [...this.data.quests, incomingQuest]);
+            } else if (payload.type === "PLAYER_DELETE_QUEST" && this.isGM) {
+                this.saveQuests(this.data.quests.filter(q => q.id !== payload.questId));
+            } else if (payload.type === "PLAYER_SAVE_CATEGORIES" && this.isGM) {
+                this.saveQuestCategories(payload.cats);
             }
         });
 
@@ -161,8 +192,11 @@ class StoryStore {
                     OBR.broadcast.sendMessage(SHOP_EVENT_CHANNEL, {
                         type: "PURCHASE_RESPONSE", success: true, transactionId: data.transactionId,
                         targetConnectionId: msg.connectionId, message: "購買成功！",
-                        item: item, quantity: data.quantity, cost: data.cost,
-                        targetTokenId: data.targetTokenId // 補上遺漏的目標代幣ID
+                        // Prevent inventory addition if it is a service, and fix quantity doubling issue
+                        item: item.isService ? undefined : { ...item, quantity: data.quantity },
+                        serviceItem: item.isService ? { ...item, quantity: data.quantity } : undefined,
+                        quantity: data.quantity, cost: data.cost,
+                        targetTokenId: data.targetTokenId
                     }, { destination: "ALL" });
                 } else {
                     OBR.broadcast.sendMessage(SHOP_EVENT_CHANNEL, {
@@ -183,8 +217,12 @@ class StoryStore {
                     OBR.broadcast.sendMessage(SHOP_EVENT_CHANNEL, {
                         type: "LOOT_RESPONSE", success: true, transactionId: data.transactionId,
                         targetConnectionId: msg.connectionId, message: "拾取成功！",
-                        item: item, quantity: data.quantity,
-                        targetTokenId: data.targetTokenId // 補上遺漏的目標代幣ID
+                        // Prevent character sheet extensions from adding currency to inventory
+                        item: item.isCurrency ? undefined : item,
+                        currencyItem: item.isCurrency ? item : undefined,
+                        quantity: data.quantity,
+                        targetTokenId: data.targetTokenId,
+                        sourceId: data.sourceId
                     }, { destination: "ALL" });
                 } else {
                     OBR.broadcast.sendMessage(SHOP_EVENT_CHANNEL, {
@@ -330,6 +368,9 @@ export function useStoryData() {
         updateLegacyLive: storyStore.updateLegacyLive,
         toggleQuestCompletion: storyStore.toggleQuestCompletion,
         getFullData: () => storyStore.data,
-        clearUnread: storyStore.clearUnread
+        clearUnread: storyStore.clearUnread,
+        saveSingleQuest: storyStore.saveSingleQuest,
+        deleteSingleQuest: storyStore.deleteSingleQuest,
+        saveCategoriesProxy: storyStore.saveCategoriesProxy
     };
 }

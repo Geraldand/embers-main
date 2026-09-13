@@ -36,6 +36,8 @@ export interface ShopItem {
     quantity: number;
     isVisible?: boolean;
     isAttuned?: boolean;
+    // Mark item as a service
+    isService?: boolean;
 }
 
 export interface Shop {
@@ -59,6 +61,7 @@ export interface LogEntry {
 export interface LootItem extends ShopItem {
     isInfinite?: boolean;
     isRevealed?: boolean;
+    isCurrency?: boolean;
 }
 
 export interface LootSource {

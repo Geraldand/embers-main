@@ -99,7 +99,7 @@ export default function LootTab() {
             const activeContainersWeight = INVENTORY_CATEGORIES.reduce((acc, cat) => inventory.some((i: any) => i.category === cat.id) ? acc + cat.weight : acc, 0);
             const coinWeight = ((currency.cp || 0) + (currency.sp || 0) + (currency.ep || 0) + (currency.gp || 0) + (currency.pp || 0)) / 50;
             const currentW = +(itemsWeight + activeContainersWeight + coinWeight).toFixed(1);
-            
+
             const abilities = meta.abilities || { str: 10 };
             const maxW = (abilities.str || 10) * 15;
 
@@ -143,18 +143,79 @@ export default function LootTab() {
             if (data.success) { 
                 playLootTakeSound(); 
                 setToastMsg({ text: data.message, type: "success" }); 
+
+                // Support both regular items and currency items
+                const receivedItem = data.currencyItem || data.item;
+
+                if (receivedItem?.isCurrency && activeTokenId) {
+                    const items = await OBR.scene.items.getItems([activeTokenId]);
+                    if (items.length > 0) {
+                        const token = items[0];
+                        const meta = (token.metadata[META_ID] as any) || {};
+                        const rawCurr = token.metadata[CURR_ID] || meta.currency || { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 };
+                        
+                        const totalAddedCp = Math.round(receivedItem.cost * data.quantity * 100);
+
+                        let remainingCp = totalAddedCp;
+                        const addedPp = Math.floor(remainingCp / 1000);
+                        remainingCp %= 1000;
+                        const addedGp = Math.floor(remainingCp / 100);
+                        remainingCp %= 100;
+                        const addedSp = Math.floor(remainingCp / 10);
+                        remainingCp %= 10;
+                        const addedCpFinal = remainingCp;
+
+                        const fixedPp = Math.floor(rawCurr.pp || 0);
+                        const fixedGp = Math.floor(rawCurr.gp || 0);
+                        const fixedEp = Math.floor(rawCurr.ep || 0);
+                        const fixedSp = Math.floor(rawCurr.sp || 0);
+                        
+                        const dustPp = (rawCurr.pp || 0) - fixedPp;
+                        const dustGp = (rawCurr.gp || 0) - fixedGp;
+                        const dustEp = (rawCurr.ep || 0) - fixedEp;
+                        const dustSp = (rawCurr.sp || 0) - fixedSp;
+                        
+                        const fixedCp = Math.round(
+                            dustPp * 1000 + 
+                            dustGp * 100 + 
+                            dustEp * 50 + 
+                            dustSp * 10 + 
+                            (rawCurr.cp || 0)
+                        );
+
+                        const newCurr = { 
+                            pp: fixedPp + addedPp,
+                            gp: fixedGp + addedGp,
+                            ep: fixedEp,
+                            sp: fixedSp + addedSp,
+                            cp: fixedCp + addedCpFinal
+                        };
+
+                        await OBR.scene.items.updateItems([activeTokenId], (draft) => {
+                            if (draft[0].metadata[CURR_ID] !== undefined) {
+                                draft[0].metadata[CURR_ID] = newCurr;
+                            } else {
+                                draft[0].metadata[META_ID] = { ...meta, currency: newCurr };
+                            }
+                        });
+                    }
+                }
+
                 if(activeTokenId) fetchTokenData(activeTokenId); 
 
-                saveLoots(loots.map(s => {
-                    if (s.id !== data.sourceId) return s;
-                    const updatedItems = s.items.map(i => {
-                        if (i.id === data.item.id && !i.isInfinite) {
-                            return { ...i, quantity: i.quantity - data.quantity };
-                        }
-                        return i;
-                    });
-                    return { ...s, items: updatedItems };
-                }));
+                // Ensure local loot state updates correctly
+                if (data.sourceId && receivedItem) {
+                    saveLoots(loots.map(s => {
+                        if (s.id !== data.sourceId) return s;
+                        const updatedItems = s.items.map(i => {
+                            if (i.id === receivedItem.id && !i.isInfinite) {
+                                return { ...i, quantity: Math.max(0, i.quantity - data.quantity) };
+                            }
+                            return i;
+                        });
+                        return { ...s, items: updatedItems };
+                    }));
+                }
 
             } else { 
                 setToastMsg({ text: data.message, type: "error" }); 
@@ -205,7 +266,9 @@ export default function LootTab() {
             category: formItem.category || "backpack",
             quantity: formItem.quantity || 1,
             isInfinite: formItem.isInfinite || false,
-            isRevealed: formItem.isRevealed || false
+            isRevealed: formItem.isRevealed || false,
+            // Add property to new item
+            isCurrency: formItem.isCurrency || false
         };
         saveLoots(loots.map(s => s.id === targetSourceId ? { ...s, items: editingItem ? s.items.map(i => i.id === editingItem.id ? newItem : i) : [...s.items, newItem] } : s));
         setItemModalOpen(false);
@@ -245,7 +308,7 @@ export default function LootTab() {
         playClickSound();
         if (!item.isInfinite && item.quantity <= 0) { setToastMsg({ text: "此戰利品已被拿完！", type: "error" }); setTimeout(() => setToastMsg(null), 3000); return; }
         if (!activeTokenId) { setToastMsg({ text: "請先在畫面上點選要拾取的角色！", type: "error" }); setTimeout(() => setToastMsg(null), 3000); return; }
-        
+
         setProcessingItems(prev => ({ ...prev, [item.id]: true }));
         OBR.broadcast.sendMessage(SHOP_EVENT_CHANNEL, { type: "LOOT_REQUEST", transactionId: Math.random().toString(36).substring(2, 9), sourceId, item, cost: 0, quantity: 1, targetTokenId: activeTokenId }, { destination: "ALL" });
         setTimeout(() => setProcessingItems(prev => ({ ...prev, [item.id]: false })), 1500);
@@ -281,7 +344,7 @@ export default function LootTab() {
                     {toastMsg.type === "success" ? <FaCircleCheck /> : <FaCircleExclamation />} {toastMsg.text}
                 </div>
             )}
-            
+
             <div className="flex items-center gap-2 p-3 mb-2 bg-transparent border-b border-mirage-200/50 dark:border-mirage-800/50">
                 <span className="text-lg font-black truncate flex-1">
                     <span className="text-[#9c81d8] mr-2">{activeTokenName}</span>
@@ -351,7 +414,7 @@ export default function LootTab() {
                                     </div>
                                 )}
                             </div>
-                            
+
                             {isExpanded && (
                                 <div className="p-2 flex flex-col gap-1.5 animate-in fade-in">
                                     {isGM && (
@@ -361,7 +424,7 @@ export default function LootTab() {
                                             </button>
                                         </div>
                                     )}
-                                    
+
                                     {isGM && (
                                         <div className="mt-2 mb-1 px-1 flex justify-between items-end border-b border-panel-inactive/30 pb-1">
                                             <span className="text-[15px] font-bold text-amber-400">掉落區</span>
@@ -460,7 +523,7 @@ export default function LootTab() {
                     </div>
                 </div>
             )}
-            
+
             {sourceModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
                     <div className="w-full max-w-[360px] flex flex-col shadow-2xl rounded-2xl bg-panel-content p-5 border border-panel-inactive">
@@ -468,6 +531,8 @@ export default function LootTab() {
                             <h3 className="font-bold text-white">{editingSource ? "編輯來源" : "新增來源"}</h3>
                         </div>
                         <input autoFocus type="text" value={formSource.name || ""} onChange={(e) => setFormSource({ ...formSource, name: e.target.value })} placeholder="名稱" className="w-full bg-panel-base text-white text-sm font-bold rounded-xl p-2.5 outline-none mb-3 border border-transparent focus:border-panel-active shadow-inner" />
+                        {/* Source description textarea */}
+                        <textarea value={formSource.description || ""} onChange={(e) => setFormSource({ ...formSource, description: e.target.value })} placeholder="來源說明..." className="w-full h-24 bg-panel-base text-gray-300 text-sm rounded-xl p-2.5 outline-none mb-3 border border-transparent focus:border-panel-active resize-none no-scrollbar shadow-inner" />
                         <select value={formSource.scenarioKey || "humanoid"} onChange={(e) => setFormSource({ ...formSource, scenarioKey: e.target.value })} className="w-full bg-panel-base text-white text-xs font-bold rounded-xl p-2.5 outline-none mb-3 border border-transparent focus:border-panel-active shadow-inner">
                             {Object.entries(LOOT_SCENARIO_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                         </select>
@@ -486,7 +551,7 @@ export default function LootTab() {
                         <div className="flex flex-col gap-3 mb-5">
                             <input autoFocus type="text" value={formItem.name || ""} onChange={(e) => setFormItem({ ...formItem, name: e.target.value })} placeholder="物品名稱" className="w-full bg-panel-base text-white text-sm font-bold rounded-xl p-2.5 outline-none border border-transparent focus:border-panel-active shadow-inner" />
                             <textarea value={formItem.description || ""} onChange={(e) => setFormItem({ ...formItem, description: e.target.value })} placeholder="物品說明..." className="w-full h-24 bg-panel-base text-gray-300 text-sm rounded-xl p-2.5 outline-none border border-transparent focus:border-panel-active resize-none no-scrollbar shadow-inner" />
-                            
+
                             <div className="flex items-center gap-2">
                                 <select value={formItem.rarity || "none"} onChange={(e) => setFormItem({ ...formItem, rarity: e.target.value })} className={`flex-1 bg-panel-base text-xs font-bold rounded-xl p-2.5 outline-none border border-transparent focus:border-panel-active shadow-inner ${RARITY_COLORS[formItem.rarity || 'none']}`}>
                                     {Object.entries(RARITY_LABELS).map(([k, v]) => <option key={k} value={k} className={RARITY_COLORS[k]}>{v}</option>)}
@@ -497,13 +562,18 @@ export default function LootTab() {
                             </div>
 
                             <div className="flex items-center gap-2">
-                                <NumberInputBlock label="數量" value={formItem.quantity || 0} onChange={(v: number) => setFormItem({...formItem, quantity: v})} min={0} step={1} isInteger={true} disabled={formItem.isInfinite} />
-                                <NumberInputBlock label="重(lb)" value={formItem.weight || 0} onChange={(v: number) => setFormItem({...formItem, weight: v})} min={0} step={0.1} />
-                                <NumberInputBlock label="價值" value={formItem.cost || 0} onChange={(v: number) => setFormItem({...formItem, cost: v})} min={0} step={0.5} />
+                                <NumberInputBlock label="數量" value={formItem.quantity || 0} onChange={(v: number) => setFormItem({ ...formItem, quantity: v })} min={0} step={1} isInteger={true} disabled={formItem.isInfinite} />
+                                <NumberInputBlock label="重(lb)" value={formItem.weight || 0} onChange={(v: number) => setFormItem({ ...formItem, weight: v })} min={0} step={0.1} />
+                                <NumberInputBlock label="價值" value={formItem.cost || 0} onChange={(v: number) => setFormItem({ ...formItem, cost: v })} min={0} step={0.5} />
                             </div>
-                            <button onClick={() => setFormItem({ ...formItem, isInfinite: !formItem.isInfinite })} className={`flex items-center justify-center w-full h-9 mt-1 rounded-xl text-xs font-bold transition-colors outline-none border shadow-sm ${formItem.isInfinite ? "bg-panel-active/20 border-panel-active text-panel-active" : "bg-panel-base border-transparent text-gray-400 hover:text-white"}`}>
-                                重複抽取
-                            </button>
+                            <div className="flex items-center gap-2 mt-1">
+                                <button onClick={() => setFormItem({ ...formItem, isInfinite: !formItem.isInfinite })} className={`flex-1 flex items-center justify-center h-9 rounded-xl text-xs font-bold transition-colors outline-none border shadow-sm ${formItem.isInfinite ? "bg-panel-active/20 border-panel-active text-panel-active" : "bg-panel-base border-transparent text-gray-400 hover:text-white"}`}>
+                                    重複抽取
+                                </button>
+                                <button onClick={() => setFormItem({ ...formItem, isCurrency: !formItem.isCurrency })} className={`flex-1 flex items-center justify-center h-9 rounded-xl text-xs font-bold transition-colors outline-none border shadow-sm ${formItem.isCurrency ? "bg-amber-500/20 border-amber-500 text-amber-500" : "bg-panel-base border-transparent text-gray-400 hover:text-white"}`}>
+                                    金錢拾取
+                                </button>
+                            </div>
                         </div>
                         <div className="flex justify-end gap-2">
                             <button onClick={() => { playClickSound(); setItemModalOpen(false); }} className="px-4 py-1.5 rounded-full text-xs font-bold text-gray-400 hover:text-white outline-none">取消</button>

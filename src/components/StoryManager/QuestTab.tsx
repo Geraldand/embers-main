@@ -8,7 +8,7 @@ function playClickSound() { try { const audio = new Audio('/click.mp3'); audio.v
 function playQuestCheckSound() { try { const audio = new Audio('/quest_check.mp3'); audio.volume = 0.3; audio.play().catch(() => { }); } catch (e) { } }
 
 export default function QuestTab() {
-    const { categories, quests, isGM, saveQuests, saveQuestCategories, toggleQuestCompletion } = useStoryData();
+    const { categories, quests, isGM, toggleQuestCompletion, saveSingleQuest, deleteSingleQuest, saveCategoriesProxy } = useStoryData();
     const [modalOpen, setModalOpen] = useState(false);
     const [categoryModalOpen, setCategoryModalOpen] = useState(false);
     const [editingQuest, setEditingQuest] = useState<Quest | null>(null);
@@ -29,26 +29,27 @@ export default function QuestTab() {
             markerStyle: form.markerStyle || "checkbox",
             createdAt: editingQuest?.createdAt || Date.now()
         };
-        saveQuests(editingQuest ? quests.map(q => q.id === editingQuest.id ? newQuest : q) : [...quests, newQuest]);
+        saveSingleQuest(newQuest);
         setModalOpen(false);
     };
 
     const handleSaveCategories = () => {
         playClickSound();
-        saveQuestCategories(categoryForm);
+        saveCategoriesProxy(categoryForm);
         setCategoryModalOpen(false);
     };
 
     const handleDelete = (id: string) => {
         playClickSound();
-        saveQuests(quests.filter(q => q.id !== id));
+        deleteSingleQuest(id);
         setConfirmDeleteId(null);
     };
 
     const openEditModal = (quest?: Quest) => {
         playClickSound();
         if (quest) { setEditingQuest(quest); setForm(quest); } 
-        else { setEditingQuest(null); setForm({ categoryId: categories[0]?.id, isVisible: false, isCompleted: false, markerStyle: "checkbox" }); }
+        // 玩家新增任務時，預設直接公開 (isVisible: true)
+        else { setEditingQuest(null); setForm({ categoryId: categories[0]?.id, isVisible: true, isCompleted: false, markerStyle: "checkbox" }); }
         setModalOpen(true);
     };
 
@@ -58,12 +59,13 @@ export default function QuestTab() {
         <div className="relative px-1">
             <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-bold text-gray-300">還記得...</h3>
-                {isGM && (
-                    <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
+                    {/* 只有 DM 可以編輯任務分類 */}
+                    {isGM && (
                         <button onClick={() => { setCategoryForm(categories); setCategoryModalOpen(true); playClickSound(); }} className="p-1.5 text-gray-400 hover:text-white bg-panel-inactive rounded-full transition-colors outline-none"><FaGear className="w-3.5 h-3.5"/></button>
-                        <button onClick={() => openEditModal()} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-panel-inactive hover:bg-panel-active text-white rounded-full transition-colors shadow-sm outline-none"><FaCirclePlus className="w-3.5 h-3.5"/> 新增任務</button>
-                    </div>
-                )}
+                    )}
+                    <button onClick={() => openEditModal()} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-panel-inactive hover:bg-panel-active text-white rounded-full transition-colors shadow-sm outline-none"><FaCirclePlus className="w-3.5 h-3.5"/> 新增任務</button>
+                </div>
             </div>
 
             {categories.filter(c => isGM || c.isVisible !== false).map(cat => {
@@ -72,8 +74,9 @@ export default function QuestTab() {
                     <div key={cat.id} className="mb-4">
                         <div className="flex items-center justify-between border-b border-panel-inactive pb-1 mb-2">
                             <h4 className="text-base font-bold text-panel-active px-1">{cat.name}</h4>
+                            {/* 只有 DM 可以設定分類的可見度 */}
                             {isGM && (
-                                <button onClick={() => saveQuestCategories(categories.map(c => c.id === cat.id ? { ...c, isVisible: c.isVisible === false ? true : false } : c))} className={`p-1.5 outline-none rounded-full transition-colors ${cat.isVisible === false ? "text-gray-500 hover:text-white" : "text-panel-active hover:text-white"}`} title={cat.isVisible === false ? "此分類對玩家隱藏" : "此分類公開"}>
+                                <button onClick={() => saveCategoriesProxy(categories.map(c => c.id === cat.id ? { ...c, isVisible: c.isVisible === false ? true : false } : c))} className={`p-1.5 outline-none rounded-full transition-colors ${cat.isVisible === false ? "text-gray-500 hover:text-white" : "text-panel-active hover:text-white"}`} title={cat.isVisible === false ? "此分類對玩家隱藏" : "此分類公開"}>
                                     {cat.isVisible === false ? <FaEyeSlash className="w-4 h-4"/> : <FaEye className="w-4 h-4"/>}
                                 </button>
                             )}
@@ -93,15 +96,16 @@ export default function QuestTab() {
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-start justify-between gap-2">
                                                     <h5 className={`font-bold text-[15px] text-white truncate ${quest.isCompleted ? "line-through text-gray-400" : ""}`}>{quest.title}</h5>
-                                                    {isGM && (
-                                                        <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-panel-content/80 rounded-full shrink-0">
-                                                            <button onClick={() => { playClickSound(); saveQuests(quests.map(q => q.id === quest.id ? { ...q, isVisible: !q.isVisible } : q)); }} className={`p-1.5 outline-none ${quest.isVisible ? "text-panel-active" : "text-gray-400 hover:text-white"}`}>{quest.isVisible ? <FaEye className="w-3.5 h-3.5"/> : <FaEyeSlash className="w-3.5 h-3.5"/>}</button>
-                                                            <button onClick={() => openEditModal(quest)} className="p-1.5 text-gray-400 hover:text-white outline-none"><FaPencil className="w-3.5 h-3.5"/></button>
-                                                            <button onClick={() => confirmDeleteId === quest.id ? handleDelete(quest.id) : setConfirmDeleteId(quest.id)} onMouseLeave={() => setConfirmDeleteId(null)} className={`p-1.5 outline-none ${confirmDeleteId === quest.id ? "text-red-500" : "text-gray-400 hover:text-red-500"}`}>
-                                                                {confirmDeleteId === quest.id ? <FaXmark className="w-3.5 h-3.5"/> : <FaTrash className="w-3.5 h-3.5"/>}
-                                                            </button>
-                                                        </div>
-                                                    )}
+                                                    <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-panel-content/80 rounded-full shrink-0">
+                                                        {/* 只有 DM 可以切換單一任務的可見度 */}
+                                                        {isGM && (
+                                                            <button onClick={() => { playClickSound(); saveSingleQuest({ ...quest, isVisible: !quest.isVisible }); }} className={`p-1.5 outline-none ${quest.isVisible ? "text-panel-active" : "text-gray-400 hover:text-white"}`}>{quest.isVisible ? <FaEye className="w-3.5 h-3.5"/> : <FaEyeSlash className="w-3.5 h-3.5"/>}</button>
+                                                        )}
+                                                        <button onClick={() => openEditModal(quest)} className="p-1.5 text-gray-400 hover:text-white outline-none"><FaPencil className="w-3.5 h-3.5"/></button>
+                                                        <button onClick={() => confirmDeleteId === quest.id ? handleDelete(quest.id) : setConfirmDeleteId(quest.id)} onMouseLeave={() => setConfirmDeleteId(null)} className={`p-1.5 outline-none ${confirmDeleteId === quest.id ? "text-red-500" : "text-gray-400 hover:text-red-500"}`}>
+                                                            {confirmDeleteId === quest.id ? <FaXmark className="w-3.5 h-3.5"/> : <FaTrash className="w-3.5 h-3.5"/>}
+                                                        </button>
+                                                    </div>
                                                 </div>
                                                 {quest.description && (
                                                     <p onClick={() => setExpandedQuests(p => ({ ...p, [quest.id]: !p[quest.id] }))} className={`mt-1 text-sm text-gray-400 cursor-pointer whitespace-pre-wrap break-words transition-all ${isExpanded ? "" : "line-clamp-2"} ${quest.isCompleted ? "line-through" : ""}`}>{quest.description}</p>
@@ -153,9 +157,12 @@ export default function QuestTab() {
                                     <option value="none">純文字</option>
                                 </select>
                             </div>
-                            <button onClick={() => setForm({...form, isVisible: !form.isVisible})} className={`flex items-center justify-center gap-1.5 w-full h-9 rounded-xl text-xs font-bold outline-none border shadow-sm ${form.isVisible ? "bg-panel-active/20 border-panel-active text-panel-active" : "bg-panel-base border-transparent text-gray-400 hover:text-white"}`}>
-                                {form.isVisible ? <><FaEye className="w-3.5 h-3.5"/> 玩家可見</> : <><FaEyeSlash className="w-3.5 h-3.5"/> 隱藏任務</>}
-                            </button>
+                            {/* 只有 DM 在 Modal 中會看到隱私切換鈕 */}
+                            {isGM && (
+                                <button onClick={() => setForm({...form, isVisible: !form.isVisible})} className={`flex items-center justify-center gap-1.5 w-full h-9 rounded-xl text-xs font-bold outline-none border shadow-sm ${form.isVisible ? "bg-panel-active/20 border-panel-active text-panel-active" : "bg-panel-base border-transparent text-gray-400 hover:text-white"}`}>
+                                    {form.isVisible ? <><FaEye className="w-3.5 h-3.5"/> 所有人可見</> : <><FaEyeSlash className="w-3.5 h-3.5"/> 隱藏任務</>}
+                                </button>
+                            )}
                         </div>
                         <div className="flex justify-end gap-2">
                             <button onClick={() => {playClickSound(); setModalOpen(false);}} className="px-4 py-1.5 rounded-full text-xs font-bold text-gray-400 hover:text-white outline-none transition-colors">取消</button>

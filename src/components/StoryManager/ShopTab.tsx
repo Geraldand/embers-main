@@ -191,12 +191,67 @@ export default function ShopTab() {
 
             if (data.type === "PURCHASE_RESPONSE" || data.type === "SELL_RESPONSE") {
                 if (data.success) {
-                    if (data.type === "PURCHASE_RESPONSE") {
-                        playTradeSuccessSound();
-                    }
-                    setToastMsg({ text: data.type === "SELL_RESPONSE" ? `出售成功！獲得 ${(data.revenue * data.quantity).toFixed(2)} GP。` : data.message, type: "success" });
-                    if (activeTokenId) fetchTokenData(activeTokenId);
-                } else { setToastMsg({ text: data.message, type: "error" }); }
+                        if (data.type === "PURCHASE_RESPONSE") {
+                            playTradeSuccessSound();
+                            
+                            // Process service gold deduction manually
+                            const receivedItem = data.serviceItem || data.item;
+                            if (receivedItem?.isService && activeTokenId) {
+                                const items = await OBR.scene.items.getItems([activeTokenId]);
+                                if (items.length > 0) {
+                                    const token = items[0];
+                                    const meta = (token.metadata[META_ID] as any) || {};
+                                    const rawCurr = token.metadata[CURR_ID] || meta.currency || { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 };
+                                    
+                                    // Total cost in CP
+                                    const totalCostCp = Math.round(data.cost * data.quantity * 100);
+                                    
+                                    const fixedPp = Math.floor(rawCurr.pp || 0);
+                                    const fixedGp = Math.floor(rawCurr.gp || 0);
+                                    const fixedEp = Math.floor(rawCurr.ep || 0);
+                                    const fixedSp = Math.floor(rawCurr.sp || 0);
+                                    
+                                    const dustPp = (rawCurr.pp || 0) - fixedPp;
+                                    const dustGp = (rawCurr.gp || 0) - fixedGp;
+                                    const dustEp = (rawCurr.ep || 0) - fixedEp;
+                                    const dustSp = (rawCurr.sp || 0) - fixedSp;
+                                    
+                                    // Current total CP available
+                                    const currentTotalCp = Math.round(
+                                        fixedPp * 1000 + 
+                                        fixedGp * 100 + 
+                                        fixedEp * 50 + 
+                                        fixedSp * 10 + 
+                                        (rawCurr.cp || 0) +
+                                        dustPp * 1000 + dustGp * 100 + dustEp * 50 + dustSp * 10
+                                    );
+
+                                    // Deduct and normalize currency
+                                    let remainingCp = Math.max(0, currentTotalCp - totalCostCp);
+                                    
+                                    const newPp = Math.floor(remainingCp / 1000);
+                                    remainingCp %= 1000;
+                                    const newGp = Math.floor(remainingCp / 100);
+                                    remainingCp %= 100;
+                                    const newSp = Math.floor(remainingCp / 10);
+                                    remainingCp %= 10;
+                                    const newCp = remainingCp;
+
+                                    const newCurr = { pp: newPp, gp: newGp, ep: 0, sp: newSp, cp: newCp };
+
+                                    await OBR.scene.items.updateItems([activeTokenId], (draft) => {
+                                        if (draft[0].metadata[CURR_ID] !== undefined) {
+                                            draft[0].metadata[CURR_ID] = newCurr;
+                                        } else {
+                                            draft[0].metadata[META_ID] = { ...meta, currency: newCurr };
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                        setToastMsg({ text: data.type === "SELL_RESPONSE" ? `出售成功！獲得 ${(data.revenue * data.quantity).toFixed(2)} GP。` : data.message, type: "success" });
+                        if (activeTokenId) fetchTokenData(activeTokenId);
+                    } else { setToastMsg({ text: data.message, type: "error" }); }
                 setTimeout(() => setToastMsg(null), 3000);
             }
         };
@@ -245,7 +300,9 @@ export default function ShopTab() {
             rarity: formItem.rarity || "none",
             category: formItem.category || "backpack",
             quantity: formItem.quantity || 1,
-            isVisible: formItem.isVisible ?? true
+            isVisible: formItem.isVisible ?? true,
+            // Include service toggle
+            isService: formItem.isService || false
         };
 
         saveShops(shops.map(s => {
@@ -264,7 +321,9 @@ export default function ShopTab() {
         if (item.quantity < quantity) { setToastMsg({ text: "此商品庫存不足！", type: "error" }); setTimeout(() => setToastMsg(null), 3000); return; }
         if (!activeTokenId) { setToastMsg({ text: "請先點選你要購物的角色！", type: "error" }); setTimeout(() => setToastMsg(null), 3000); return; }
 
-        const finalCost = item.cost * shop.priceMultiplier;
+        // Second-hand items ignore shop price multiplier
+        const finalCost = isBoughtItem ? item.cost : item.cost * shop.priceMultiplier;
+        
         if (activeTokenGold !== null && activeTokenGold < finalCost * quantity) {
             setToastMsg({ text: `餘額不足！需要 ${(finalCost * quantity).toFixed(2)} GP`, type: "error" }); setTimeout(() => setToastMsg(null), 3000); return;
         }
@@ -473,7 +532,8 @@ export default function ShopTab() {
                                                 <span className="text-xs font-bold text-amber-500">二手貨</span>
                                             </div>
                                             {shop.boughtItems.filter(i => isGM || i.isVisible).map(item => {
-                                                const finalPrice = item.cost * shop.priceMultiplier;
+                                                // Second-hand items display base cost without multiplier
+                                                const finalPrice = item.cost;
                                                 const isSoldOut = item.quantity <= 0;
                                                 const buyQty = getQty(item.id);
 
@@ -598,9 +658,14 @@ export default function ShopTab() {
                                 <NumberInputBlock label="重(lb)" value={formItem.weight || 0} onChange={(v: number) => setFormItem({...formItem, weight: v})} min={0} step={0.1} />
                                 <NumberInputBlock label="原價" value={formItem.cost || 0} onChange={(v: number) => setFormItem({...formItem, cost: v})} min={0} step={0.5} />
                             </div>
-                            <button onClick={() => setFormItem({ ...formItem, isVisible: !formItem.isVisible })} className={`flex items-center justify-center gap-1.5 w-full h-9 rounded-xl text-xs font-bold transition-colors outline-none border shadow-sm mt-1 ${formItem.isVisible ? "bg-panel-active/20 border-panel-active text-panel-active" : "bg-panel-base border-transparent text-gray-400 hover:text-white"}`}>
-                                {formItem.isVisible ? <><FaEye className="w-3.5 h-3.5" /> 玩家可見</> : <><FaEyeSlash className="w-3.5 h-3.5" /> 隱藏商品</>}
-                            </button>
+                            <div className="flex items-center gap-2 mt-1">
+                                <button onClick={() => setFormItem({ ...formItem, isVisible: !formItem.isVisible })} className={`flex-1 flex items-center justify-center gap-1.5 h-9 rounded-xl text-xs font-bold transition-colors outline-none border shadow-sm ${formItem.isVisible ? "bg-panel-active/20 border-panel-active text-panel-active" : "bg-panel-base border-transparent text-gray-400 hover:text-white"}`}>
+                                    {formItem.isVisible ? <><FaEye className="w-3.5 h-3.5" /> 玩家可見</> : <><FaEyeSlash className="w-3.5 h-3.5" /> 隱藏商品</>}
+                                </button>
+                                <button onClick={() => setFormItem({ ...formItem, isService: !formItem.isService })} className={`flex-1 flex items-center justify-center gap-1.5 h-9 rounded-xl text-xs font-bold transition-colors outline-none border shadow-sm ${formItem.isService ? "bg-amber-500/20 border-amber-500 text-amber-500" : "bg-panel-base border-transparent text-gray-400 hover:text-white"}`}>
+                                    提供服務
+                                </button>
+                            </div>
                         </div>
                         <div className="flex justify-end gap-2">
                             <button onClick={() => setItemModalOpen(false)} className="px-4 py-1.5 rounded-full text-xs font-bold text-gray-400 hover:text-white outline-none">取消</button>
