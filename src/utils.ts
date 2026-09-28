@@ -144,37 +144,93 @@ export const easingFunctions = {
 };
 // 紀錄各音效上次播放時間，避免多目標同時爆音
 const soundLastPlayMap = new Map<string, number>();
+const preloadedAudioMap = new Map<string, Promise<string>>();
 
-export function playSpellSound(soundUrl: string, durationMs?: number, playbackRate: number = 1.0, volume?: number) {
-    if (!soundUrl || soundUrl === "none") return;
-    const now = Date.now();
-    const lastPlay = soundLastPlayMap.get(soundUrl) ?? 0;
-
-    if (now - lastPlay < 100) {
-        return;
+export function preloadSound(soundUrl: string): Promise<string> {
+    if (!soundUrl || soundUrl === "none") {
+        return Promise.resolve("");
     }
-    soundLastPlayMap.set(soundUrl, now);
+    const fullUrl = soundUrl.startsWith("http") || soundUrl.startsWith("/")
+        ? (soundUrl.startsWith("http") ? soundUrl : `${window.location.origin}${soundUrl}`)
+        : `${window.location.origin}/sounds/${soundUrl}`;
 
-    const fullUrl = `${window.location.origin}/sounds/${soundUrl}`;
-    
-    try {
-        const audio = new Audio(fullUrl);
-        audio.playbackRate = playbackRate;
-        
-        // Adjust the default volume here (e.g. change 0.09 to 0.04)
-        audio.volume = volume !== undefined ? Math.max(0, Math.min(1, volume)) : 0.04; 
+    const existing = preloadedAudioMap.get(fullUrl);
+    if (existing) {
+        return existing;
+    }
 
-        audio.play().catch(e => {
-            console.warn(`[Embers] 音效播放被阻擋:`, e);
+    const promise = (async () => {
+        try {
+            const response = await fetch(fullUrl, { mode: "cors", cache: "force-cache" });
+            await response.blob();
+        } catch (e) {
+            console.warn("[Embers] Audio preload failed:", fullUrl, e);
+        }
+        return fullUrl;
+    })();
+
+    preloadedAudioMap.set(fullUrl, promise);
+    return promise;
+}
+
+export async function prepareSpellSound(
+    soundUrl: string,
+    durationMs?: number,
+    playbackRate: number = 1.0,
+    volume?: number
+): Promise<(() => void) | null> {
+    if (!soundUrl || soundUrl === "none") return null;
+
+    const fullUrl = await preloadSound(soundUrl);
+    if (!fullUrl) return null;
+
+    const audio = new Audio(fullUrl);
+    audio.preload = "auto";
+    audio.playbackRate = playbackRate;
+    audio.volume = volume !== undefined ? Math.max(0, Math.min(1, volume)) : 0.04;
+
+    if (audio.readyState < 3) {
+        await new Promise<void>((resolve) => {
+            const cleanup = () => {
+                audio.removeEventListener("canplaythrough", onReady);
+                audio.removeEventListener("loadeddata", onReady);
+                audio.removeEventListener("error", onReady);
+            };
+            const onReady = () => {
+                cleanup();
+                resolve();
+            };
+            audio.addEventListener("canplaythrough", onReady, { once: true });
+            audio.addEventListener("loadeddata", onReady, { once: true });
+            audio.addEventListener("error", onReady, { once: true });
+            window.setTimeout(onReady, 1200);
+            audio.load();
+        });
+    }
+
+    return () => {
+        const now = Date.now();
+        const lastPlay = soundLastPlayMap.get(soundUrl) ?? 0;
+        if (now - lastPlay < 100) {
+            return;
+        }
+        soundLastPlayMap.set(soundUrl, now);
+
+        audio.play().catch((e) => {
+            console.warn("[Embers] Audio playback blocked:", e);
         });
 
-        if (durationMs) {
-            setTimeout(() => {
+        if (durationMs && durationMs > 0) {
+            window.setTimeout(() => {
                 audio.pause();
                 audio.currentTime = 0;
             }, durationMs);
         }
-    } catch (e) {
-        console.error("[Embers] 音效播放錯誤:", e);
-    }
+    };
+}
+
+export function playSpellSound(soundUrl: string, durationMs?: number, playbackRate: number = 1.0, volume?: number) {
+    prepareSpellSound(soundUrl, durationMs, playbackRate, volume).then((play) => {
+        if (play) play();
+    });
 }

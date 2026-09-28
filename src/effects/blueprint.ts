@@ -175,12 +175,7 @@ function parseBlueprint(element: EffectBlueprint, message: EffectInstruction[], 
     if (isError(maybeDuration)) {
         return maybeDuration;
     }
-    let duration = maybeDuration.value;
-
-    // 只有當 duration 大於 0 時（非持續型法術），才增加 300ms 緩衝
-    if (duration != undefined && duration > 0) {
-        duration += 300; 
-    }
+    const duration = maybeDuration.value;
 
     const maybeLoops = resolveSimpleValue<number>(element.loops, "loops", "number", variables);
     if (isError(maybeLoops)) {

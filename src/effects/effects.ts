@@ -13,7 +13,9 @@ export const effects = effectsJSON as unknown as Effects;
 export const effectNames = gatherEffectNames();
 export const effectMetadataKey = `${APP_KEY}/effect-id`;
 export const spellMetadataKey = `${APP_KEY}/spell-id`;
-const renderedUrls = new Set<string>();
+const inFlightPrefetches = new Map<string, Promise<void>>();
+const actualVideoDurations = new Map<string, number>();
+
 function isEffect(obj: unknown): obj is Effect {
     const effectObject = obj as Effect;
     return effectObject.basename != undefined && effectObject.type != undefined && effectObject.variants != undefined;
@@ -126,25 +128,27 @@ export function getDistance(source: Vector2, destination: Vector2) {
 }
 
 export async function registerEffect(images: Image[], duration: number, spellCaster?: string) {
+    const urls = images.map(img => img.image.url).filter(Boolean);
+    if (urls.length > 0) {
+        await prefetchAssets(urls);
+    }
+
     if (duration > 0) {
-        // 判斷是否為初次載入未解碼過的 WebM
-        let isFirstLoad = false;
-        for (const img of images) {
-            if (!renderedUrls.has(img.image.url)) {
-                isFirstLoad = true;
-                renderedUrls.add(img.image.url);
+        let effectiveDuration = duration;
+        if (urls.length > 0) {
+            const detectedDuration = actualVideoDurations.get(urls[0]);
+            if (detectedDuration && detectedDuration > 0 && effectiveDuration <= detectedDuration + 600) {
+                effectiveDuration = Math.min(effectiveDuration, detectedDuration);
             }
         }
 
-        // 核心解法：
-        // 1. 初次載入給予 400ms 緩衝，抵銷瀏覽器抓取與解碼的時間。
-        // 2. 後續快取載入固定給予 150ms 緩衝，確保動畫最後幾幀絕對不被切掉。
-        const loadBuffer = isFirstLoad ? 400 : 150;
-
+        const startTime = performance.now();
         await OBR.scene.local.addItems(images);
 
-        // 移除原本提早刪除的 -80 或 -10，改為加上緩衝時間
-        const waitTime = Math.max(0, duration + loadBuffer);
+        // Delete the item during the trailing transparent frames before the video loops back to frame zero
+        const elapsed = performance.now() - startTime;
+        const safetyMargin = Math.min(280, Math.floor(effectiveDuration * 0.22));
+        const waitTime = Math.max(0, effectiveDuration - elapsed - safetyMargin);
         await waitMs(waitTime);
         await OBR.scene.local.deleteItems(images.map(image => image.id));
     } 
@@ -262,17 +266,71 @@ export function buildEffectImage(
     return { image, effectDuration };
 }
 
+function probeVideoDuration(blob: Blob): Promise<number | null> {
+    return new Promise((resolve) => {
+        const objectUrl = URL.createObjectURL(blob);
+        const video = document.createElement("video");
+        video.preload = "metadata";
+        video.muted = true;
+
+        const cleanup = () => {
+            video.removeAttribute("src");
+            video.load();
+            URL.revokeObjectURL(objectUrl);
+        };
+
+        const timer = window.setTimeout(() => {
+            cleanup();
+            resolve(null);
+        }, 800);
+
+        video.onloadedmetadata = () => {
+            clearTimeout(timer);
+            const dur = video.duration;
+            cleanup();
+            if (Number.isFinite(dur) && dur > 0) {
+                resolve(Math.round(dur * 1000));
+            } else {
+                resolve(null);
+            }
+        };
+
+        video.onerror = () => {
+            clearTimeout(timer);
+            cleanup();
+            resolve(null);
+        };
+
+        video.src = objectUrl;
+    });
+}
+
 export function prefetchAssets(assets: string[]) {
-    const fetches = assets.map(async asset => {
-        try {
-            const response = await fetch(
-                asset,
-                { mode: "cors", cache: "force-cache" }
-            );
-            await response.blob(); // Make sure all data is received
-        } catch (e) {
-            console.warn(`[Embers] Prefetch failed for ${asset}`, e);
+    const fetches = assets.map(asset => {
+        const existing = inFlightPrefetches.get(asset);
+        if (existing) {
+            return existing;
         }
+        const promise = (async () => {
+            try {
+                const response = await fetch(
+                    asset,
+                    { mode: "cors", cache: "force-cache" }
+                );
+                const blob = await response.blob();
+                // Read and store the real WebM video duration in milliseconds
+                if (asset.endsWith(".webm") && !actualVideoDurations.has(asset)) {
+                    const realDuration = await probeVideoDuration(blob);
+                    if (realDuration) {
+                        actualVideoDurations.set(asset, realDuration);
+                    }
+                }
+            } catch (e) {
+                console.warn(`[Embers] Prefetch failed for ${asset}`, e);
+            }
+        })();
+        inFlightPrefetches.set(asset, promise);
+        return promise;
     });
     return Promise.all(fetches);
 }

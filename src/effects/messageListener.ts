@@ -8,11 +8,11 @@ import { APP_KEY } from "../config";
 import { ConeMessage } from "../types/cone";
 import { ProjectileMessage } from "../types/projectile";
 import { actions } from "./actions";
-import { getEffect } from "./effects";
+import { getDistance, getEffect, getEffectURL, getVariantName, prefetchAssets } from "./effects";
 import { projectile } from "./projectile";
 import { cone } from "./cone";
 import { aoe } from "./aoe";
-import { waitMs, playSpellSound } from "../utils";
+import { waitMs, prepareSpellSound } from "../utils";
 
 export const MESSAGE_CHANNEL = `${APP_KEY}/effects`;
 export const BLUEPRINTS_CHANNEL = `${APP_KEY}/blueprints`;
@@ -28,10 +28,51 @@ export interface Interaction {
 }
 
 const effectRegister = new Map<string, number>();
-const playedEffects = new Set<string>();
+
+function resolveInstructionVideoUrls(instruction: EffectInstruction, dpi: number): string[] {
+    if (instruction.type !== "effect" || typeof instruction.id !== "string") {
+        return [];
+    }
+    const effect = getEffect(instruction.id);
+    if (!effect || !instruction.effectProperties) {
+        return [];
+    }
+
+    const urls: string[] = [];
+    if (effect.type === "TARGET" || effect.type === "WALL") {
+        const props = instruction.effectProperties as ProjectileMessage;
+        if (props.source && props.destination) {
+            const distance = getDistance(props.source, props.destination) / (dpi || 200);
+            const variantName = getVariantName(instruction.id, distance * effect.dpi);
+            if (variantName) {
+                const copies = props.copies && props.copies > 0 ? props.copies : 1;
+                for (let i = 0; i < copies; i++) {
+                    const url = getEffectURL(
+                        instruction.id,
+                        variantName,
+                        i % effect.variants[variantName].name.length
+                    );
+                    if (url) urls.push(url);
+                }
+            }
+        }
+    } else if (effect.type === "CONE" || effect.type === "CIRCLE") {
+        const props = instruction.effectProperties as AOEEffectMessage | ConeMessage;
+        const size = props.size && props.size > 0 ? props.size : 1;
+        const variantName = getVariantName(instruction.id, size * effect.dpi);
+        if (variantName) {
+            const forcedVariant = instruction.forceVariant;
+            const variantIndex = forcedVariant ? forcedVariant % effect.variants[variantName].name.length : undefined;
+            const url = getEffectURL(instruction.id, variantName, variantIndex);
+            if (url) urls.push(url);
+        }
+    }
+    return urls;
+}
+
 async function createItemInteractions({ ids, count }: InteractionData, localOnly: boolean): Promise<Interaction> {
     const originalItems = await OBR.scene.items.getItems(ids);
-    const localItems = originalItems.map(item => ({...item, id: `embers-copy-${item.id}`, visible: true })).filter(item => isImage(item));
+    const localItems = originalItems.map(item => ({ ...item, id: `embers-copy-${item.id}`, visible: true })).filter(item => isImage(item));
     const localItemIDs = localItems.map(item => item.id);
     const originalItemIDs = originalItems.map(item => item.id);
 
@@ -44,8 +85,8 @@ async function createItemInteractions({ ids, count }: InteractionData, localOnly
                 for (const item of items) {
                     item.visible = false;
                 }
-            }
-        ));
+            })
+        );
     }
     await Promise.all(setupPromises);
 
@@ -54,11 +95,10 @@ async function createItemInteractions({ ids, count }: InteractionData, localOnly
 
     const updateDelay = 1000 / getSettingsValue(LOCAL_STORAGE_KEYS.ANIMATION_UPDATE_RATE);
 
-    // Register a callback every "updateDelay" milliseconds
+    // Register a callback every updateDelay milliseconds
     let latestItems: Image[] = [];
-
     let lastUpdateTime = 0;
-    
+
     const afterDelay = (timestamp: number) => {
         if (timestamp - lastUpdateTime >= updateDelay) {
             lastUpdateTime = timestamp;
@@ -106,7 +146,7 @@ async function createItemInteractions({ ids, count }: InteractionData, localOnly
             OBR.scene.local.deleteItems(localItemIDs);
         }
     };
-    
+
     requestAnimationFrame(afterDelay);
 
     const registerUpdates = async (items: Image[], onUpdate: InteractionUpdateFunc) => {
@@ -119,17 +159,16 @@ async function createItemInteractions({ ids, count }: InteractionData, localOnly
                 resolved: false
             });
         });
-    }
+    };
 
     const getLastKnownState = (items: string[]) => {
         if (count > 0) {
             return latestItems.filter(item => items.includes(item.id));
         }
         return [];
-    }
+    };
 
-    const onUserCalledStop = () => {
-    }
+    const onUserCalledStop = () => {};
 
     return {
         manager: [
@@ -143,23 +182,14 @@ async function createItemInteractions({ ids, count }: InteractionData, localOnly
     };
 }
 
-// 在 src/effects/messageListener.ts 中尋找 processInstruction
 async function processInstruction(instruction: EffectInstruction, dpi: number, spellName?: string, spellCaster?: string, interaction?: Interaction) {
     const doMoreWork = async (instructions?: EffectInstruction[]) => {
         if (instructions == undefined) return;
         if (!Array.isArray(instructions)) return;
         await Promise.allSettled(instructions.map(instruction => processInstruction(instruction, dpi)));
-    }
+    };
 
     const [playerId, playerRole] = await Promise.all([OBR.player.getId(), OBR.player.getRole()]);
-    
-    // 判斷是否為首次播放該特效，用於音效同步
-    const isFirstLoad = instruction.id && !playedEffects.has(instruction.id);
-    if (instruction.id && isFirstLoad) {
-        playedEffects.add(instruction.id);
-    }
-
-    console.log(`[Embers] 收到指令 ID: ${instruction.id || '無'}, 包含音效: ${instruction.sound || '無'}`);
 
     if (instruction.delay) {
         if (typeof instruction.delay !== "number") return;
@@ -167,21 +197,23 @@ async function processInstruction(instruction: EffectInstruction, dpi: number, s
         await waitMs(instruction.delay);
     }
 
-    if (instruction.sound) {
-        console.log(`[Embers] 觸發音效邏輯 ->`, instruction.sound);
-        
-        // 核心解法：初次載入動畫時，將音效強制延遲 350ms (配合上方 OBR 解碼 WebM 的預估時間)
-        const audioDelay = isFirstLoad ? 350 : 0;
-        
-        if (audioDelay > 0) {
-            setTimeout(() => {
-                playSpellSound(instruction.sound!, instruction.duration, 1.0, instruction.volume);
-            }, audioDelay);
-        } else {
-            playSpellSound(instruction.sound, instruction.duration, 1.0, instruction.volume);
-        }
+    const shouldSkipEffect =
+        instruction.type === "effect" &&
+        ((instruction.for === "GM" && playerRole !== "GM") ||
+            (instruction.for === "CASTER" && spellCaster !== playerId));
+
+    // Wait for both video and audio assets to be ready before playing them together
+    const videoUrls = !shouldSkipEffect ? resolveInstructionVideoUrls(instruction, dpi) : [];
+    const [playSound] = await Promise.all([
+        instruction.sound && !shouldSkipEffect
+            ? prepareSpellSound(instruction.sound, instruction.duration, 1.0, instruction.volume)
+            : Promise.resolve(null),
+        videoUrls.length > 0 ? prefetchAssets(videoUrls) : Promise.resolve([])
+    ]);
+
+    if (playSound) {
+        playSound();
     }
-    // 👆 新增這段追蹤日誌 👆
 
     if (instruction.id != undefined) {
         if (typeof instruction.id !== "string") {
@@ -189,8 +221,7 @@ async function processInstruction(instruction: EffectInstruction, dpi: number, s
             return;
         }
         if (instruction.type === "effect") {
-            if ((instruction.for === "GM" && playerRole !== "GM") || (instruction.for === "CASTER" && spellCaster !== playerId)) {
-                // This won't be played for this player
+            if (shouldSkipEffect) {
                 return;
             }
             const effect = getEffect(instruction.id);
@@ -233,7 +264,7 @@ async function processInstruction(instruction: EffectInstruction, dpi: number, s
                     return;
                 }
 
-                effectRegister.set(instruction.id!, (effectRegister.get(instruction.id!) ?? 0) + 1)
+                effectRegister.set(instruction.id!, (effectRegister.get(instruction.id!) ?? 0) + 1);
                 await projectile(
                     {
                         name: instruction.id,
@@ -275,7 +306,7 @@ async function processInstruction(instruction: EffectInstruction, dpi: number, s
                     return;
                 }
 
-                effectRegister.set(instruction.id!, (effectRegister.get(instruction.id!) ?? 0) + 1)
+                effectRegister.set(instruction.id!, (effectRegister.get(instruction.id!) ?? 0) + 1);
                 await cone(
                     {
                         name: instruction.id,
@@ -291,7 +322,7 @@ async function processInstruction(instruction: EffectInstruction, dpi: number, s
                     spellName,
                     spellCaster
                 );
-                effectRegister.set(instruction.id!, (effectRegister.get(instruction.id!) ?? 1) - 1)
+                effectRegister.set(instruction.id!, (effectRegister.get(instruction.id!) ?? 1) - 1);
                 await doMoreWork(instruction.instructions);
             }
             else if (effect.type === "CIRCLE") {
@@ -313,7 +344,7 @@ async function processInstruction(instruction: EffectInstruction, dpi: number, s
                     return;
                 }
 
-                effectRegister.set(instruction.id!, (effectRegister.get(instruction.id!) ?? 0) + 1)
+                effectRegister.set(instruction.id!, (effectRegister.get(instruction.id!) ?? 0) + 1);
                 await aoe(
                     {
                         name: instruction.id,
@@ -326,18 +357,21 @@ async function processInstruction(instruction: EffectInstruction, dpi: number, s
                     instruction.layer,
                     instruction.zIndex,
                     variant,
-                    (instruction as any).forceVariant,
+                    instruction.forceVariant,
                     spellName,
                     spellCaster
                 );
-                effectRegister.set(instruction.id!, (effectRegister.get(instruction.id!) ?? 1) - 1)
+                effectRegister.set(instruction.id!, (effectRegister.get(instruction.id!) ?? 1) - 1);
                 await doMoreWork(instruction.instructions);
             }
         }
         else if (instruction.type === "action") {
+            if (instruction.id === "none") {
+                return;
+            }
             const localOnly = (instruction.for === "GM" && playerRole !== "GM") || (instruction.for === "CASTER" && spellCaster !== playerId);
             const actionObject = actions[instruction.id];
-            const action = actionObject.action;
+            const action = actionObject?.action;
             if (action == undefined) {
                 log_error(`Invalid blueprint: undefined action "${instruction.id}"`);
                 return;
@@ -352,7 +386,7 @@ async function processInstruction(instruction: EffectInstruction, dpi: number, s
 }
 
 export function setupMessageListener() {
-    // 效能優化：將 playerId, dpi, party 快取在監聽器外部，避免施法瞬間觸發網路請求阻塞動畫
+    // Cache player ID, grid DPI, and party list to avoid network requests during spell casting
     let cachedPlayerId: string | undefined;
     let cachedDpi: number | undefined;
     let cachedParty: any[] = [];
@@ -369,14 +403,14 @@ export function setupMessageListener() {
         if (!Array.isArray(messageData.instructions)) {
             log_error("Malformatted message: message.instructions is not an array");
         }
-        
+
         let spellName = messageData.spellData ? messageData.spellData.name : undefined;
         let spellCaster = messageData.spellData ? messageData.spellData.caster : undefined;
-        
+
         const playerId = cachedPlayerId ?? await OBR.player.getId();
         const dpi = cachedDpi ?? await OBR.scene.grid.getDpi();
 
-        // 🌟 強制捕獲施法者 ID：使用快取的 party 資料，移除 await OBR.party.getPlayers() 的延遲
+        // Capture the caster ID from cached party data
         if (!spellCaster) {
             const myConnectionId = await OBR.player.getConnectionId();
             if (message.connectionId === myConnectionId) {
@@ -386,8 +420,8 @@ export function setupMessageListener() {
                 if (sender) spellCaster = sender.id;
             }
         }
-        
-        // 🌟 強制賦予法術名稱：確保能被 Active Effects 列表抓到
+
+        // Ensure spell name is set for the active effects list
         if (!spellName && messageData.instructions && messageData.instructions.length > 0) {
             spellName = messageData.instructions[0].id;
         }
@@ -402,7 +436,7 @@ export function setupMessageListener() {
                 await processInstruction(instruction, dpi, spellName, spellCaster, interaction);
             }));
         }
-        catch(error) {
+        catch (error) {
             log_error(error);
         }
     });

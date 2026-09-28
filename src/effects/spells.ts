@@ -97,21 +97,20 @@ function copySpellVariables(variables: Variables[], copyDelay: number) {
     }
 }
 
-function copySpellInstructions(instructions: EffectInstruction[], copyDelay: number) {
-    if (copyDelay > 0) {
-        // In the case of a positive delay, we add the delay to each instruction,
-        // sequentially
-        for (let i = 0; i < instructions.length; i++) {
-            const instruction = instructions[i];
-            if (instruction.delay == undefined) {
-                instruction.delay = copyDelay * i;
-            }
-            else {
-                instruction.delay += copyDelay * i;
-            }
-            if (instruction.instructions) {
-                copySpellInstructions(instruction.instructions, copyDelay);
-            }
+function applyReplicaDelay(instructions: EffectInstruction[], delayOffset: number) {
+    if (delayOffset <= 0) {
+        return;
+    }
+    // Add delay offset to all instructions belonging to the same replica
+    for (const instruction of instructions) {
+        if (instruction.delay == undefined) {
+            instruction.delay = delayOffset;
+        }
+        else {
+            instruction.delay += delayOffset;
+        }
+        if (instruction.instructions) {
+            applyReplicaDelay(instruction.instructions, delayOffset);
         }
     }
 }
@@ -323,21 +322,25 @@ export async function doSpell(spellID: string, playerID: string, isGM: boolean) 
         return;
     }
 
-    for (const variableSet of variables) {
+    for (let replicaIndex = 0; replicaIndex < variables.length; replicaIndex++) {
+        const variableSet = variables[replicaIndex];
         variableSet.globalTargets = targetObjects;
         const { value, error } = resolveBlueprint(spell.blueprints ?? [], variableSet);
         if (error) {
             OBR.notification.show(`Blueprint error: ${error}`, "ERROR");
             return;
         }
-        instructions.push(...value?.instructions ?? []);
+        const replicaInstructions = value?.instructions ?? [];
+        // Apply copy delay per replica so sound and video stay synchronized
+        if (copyDelay > 0 && replicaIndex > 0) {
+            applyReplicaDelay(replicaInstructions, copyDelay * replicaIndex);
+        }
+        instructions.push(...replicaInstructions);
         for (const interaction of value?.interactions?.ids ?? []) {
             interactionIds.add(interaction);
         }
         interactionCount += value?.interactions?.count ?? 0;
     }
-
-    copySpellInstructions(instructions, copyDelay);
 
     const message = {
         instructions,

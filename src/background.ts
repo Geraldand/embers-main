@@ -1,87 +1,202 @@
-import OBR from "@owlbear-rodeo/sdk";
+import OBR, { Item } from "@owlbear-rodeo/sdk";
 import LZString from "lz-string";
 import { setupDefaultCasterMenuOption, setupEffectsTool } from "./effectsTool";
 import { sendSpellsUpdate, setupGMLocalSpells, setupPlayerLocalSpells } from "./effects/localSpells";
 import { constants } from "./constants";
 import { setupMessageListener } from "./effects/messageListener";
 import spellsRecord from "./assets/spells_record.json";
-import effectRecord from "./assets/effect_record.json"; // 🌟 新增：引入 effectRecord 以便讀取 WebM 檔名
+import { APP_KEY, ASSET_LOCATION } from "./config";
+import { effects, getEffect, prefetchAssets } from "./effects/effects";
+import { getSpell } from "./effects/spells";
+import { preloadSound, safeJsonParse } from "./utils";
 
-// 🌟 替換原本的 backgroundPreloadAssets，改為「精準預載」
+const preloadedSpellIds = new Set<string>();
+
+function extractEffectPrefixes(idValue: any): string[] {
+    if (!idValue) return [];
+    if (typeof idValue === "string" && !idValue.startsWith("$")) {
+        return [idValue];
+    }
+    if (typeof idValue === "object" && Array.isArray(idValue.arguments)) {
+        const results: string[] = [];
+        for (const arg of idValue.arguments) {
+            if (typeof arg === "string" && !arg.startsWith("$") && arg.length > 1) {
+                results.push(arg.endsWith(".") ? arg.slice(0, -1) : arg);
+            } else if (typeof arg === "object") {
+                results.push(...extractEffectPrefixes(arg));
+            }
+        }
+        return results;
+    }
+    return [];
+}
+
+function addEffectNodeVideos(node: any, videoUrls: Set<string>) {
+    if (!node || typeof node !== "object") return;
+    if (node.basename && node.variants) {
+        for (const variant of Object.values(node.variants) as any[]) {
+            if (variant && Array.isArray(variant.name)) {
+                for (const name of variant.name) {
+                    videoUrls.add(`${ASSET_LOCATION}/${node.basename}_${name}.webm`);
+                }
+            }
+        }
+        return;
+    }
+    for (const child of Object.values(node)) {
+        addEffectNodeVideos(child, videoUrls);
+    }
+}
+
+function getEffectNode(path: string): any {
+    const direct = getEffect(path);
+    if (direct) return direct;
+    let current: any = effects;
+    for (const key of path.split(".")) {
+        if (!current || typeof current !== "object") return undefined;
+        current = current[key];
+    }
+    return current;
+}
+
+function collectBlueprintAssets(blueprints: any[] | undefined, videoUrls: Set<string>, soundUrls: Set<string>) {
+    if (!Array.isArray(blueprints)) return;
+    for (const bp of blueprints) {
+        if (!bp) continue;
+        if (bp.sound && typeof bp.sound === "string" && bp.sound !== "none") {
+            soundUrls.add(bp.sound);
+        }
+        const prefixes = extractEffectPrefixes(bp.id);
+        for (const prefix of prefixes) {
+            const node = getEffectNode(prefix);
+            if (node) {
+                addEffectNodeVideos(node, videoUrls);
+            }
+        }
+        if (Array.isArray(bp.blueprints)) {
+            collectBlueprintAssets(bp.blueprints, videoUrls, soundUrls);
+        }
+        if (Array.isArray(bp.instructions)) {
+            collectBlueprintAssets(bp.instructions, videoUrls, soundUrls);
+        }
+    }
+}
+
+function collectSpellIdsFromItems(items: Item[], targetSet: Set<string>) {
+    const extractEntry = (entry: any) => {
+        if (!entry) return;
+        const id = entry.embersId || (typeof entry === "string" ? entry : null);
+        if (id && typeof id === "string") {
+            targetSet.add(id.trim());
+        }
+    };
+
+    for (const item of items) {
+        for (const [key, rawValue] of Object.entries(item.metadata || {})) {
+            if (!rawValue) continue;
+            let val: any = rawValue;
+            if (typeof val === "string") {
+                if (val.startsWith("{") || val.startsWith("[")) {
+                    val = safeJsonParse<any>(val, null);
+                } else if (key.includes("equipped-spell") || key.includes("spell")) {
+                    extractEntry(val);
+                    continue;
+                }
+            }
+            if (Array.isArray(val)) {
+                val.forEach(extractEntry);
+            } else if (val && typeof val === "object") {
+                if (Array.isArray(val.actions)) val.actions.forEach(extractEntry);
+                else if (val.actions && typeof val.actions === "object") Object.values(val.actions).forEach(extractEntry);
+
+                if (Array.isArray(val.spells)) val.spells.forEach(extractEntry);
+                else if (val.spells && typeof val.spells === "object") Object.values(val.spells).forEach(extractEntry);
+
+                if (val["equipped-spell"]) {
+                    const eq = val["equipped-spell"];
+                    if (Array.isArray(eq)) eq.forEach(extractEntry);
+                    else extractEntry(eq);
+                }
+                if (val.embersId) extractEntry(val);
+            }
+        }
+    }
+}
+
+async function preloadSpellsByIds(spellIds: Iterable<string>, isGM: boolean, customSpells: Record<string, any> = {}) {
+    const videoUrls = new Set<string>();
+    const soundUrls = new Set<string>();
+
+    for (const spellId of spellIds) {
+        if (!spellId || preloadedSpellIds.has(spellId)) continue;
+        const spell = getSpell(spellId, isGM) || customSpells[spellId];
+        if (!spell) continue;
+
+        preloadedSpellIds.add(spellId);
+        if (spell.thumbnail) {
+            videoUrls.add(`${ASSET_LOCATION}/${spell.thumbnail}`);
+        }
+        collectBlueprintAssets(spell.blueprints, videoUrls, soundUrls);
+        collectBlueprintAssets(spell.onDestroyBlueprints, videoUrls, soundUrls);
+    }
+
+    if (videoUrls.size > 0) {
+        prefetchAssets(Array.from(videoUrls)).catch(() => {});
+    }
+    soundUrls.forEach(sound => {
+        preloadSound(sound).catch(() => {});
+    });
+}
+
 async function targetedPreloadAssets() {
-    const urlsToPreload = new Set<string>();
-
-    // 必載的基礎音效
-    urlsToPreload.add("/click.mp3");
+    preloadSound("/click.mp3").catch(() => {});
 
     try {
-        // 1. 取得房間內的自訂法術字典
-        const roomMeta = await OBR.room.getMetadata();
+        const [roomMeta, role, items] = await Promise.all([
+            OBR.room.getMetadata(),
+            OBR.player.getRole(),
+            OBR.scene.items.getItems()
+        ]);
+        const isGM = role === "GM";
         const customSpells = (roomMeta["embers-custom/spells"] || {}) as Record<string, any>;
+        const spellIdsToPreload = new Set<string>();
 
-        // 輔助函數：用 ID 找出法術的詳細資料
-        const getSpellData = (spellId: string) => {
-            return (spellsRecord as Record<string, any>)[spellId] || customSpells[spellId];
-        };
+        // Scan custom spell list
+        const customList = safeJsonParse<any>(
+            localStorage.getItem(`${constants.SPELL_LIST_METADATA_KEY}/${OBR.room.id}`) ||
+            localStorage.getItem(constants.SPELL_LIST_METADATA_KEY),
+            []
+        );
+        if (Array.isArray(customList)) {
+            customList.forEach((entry: any) => {
+                const id = Array.isArray(entry) ? entry[0] : entry;
+                if (typeof id === "string") {
+                    spellIdsToPreload.add(id.startsWith("$.") ? id : `$.${id}`);
+                }
+            });
+        }
 
-        // 輔助函數：將單一法術的動畫與音效網址加入預載清單
-        const addSpellAssets = (spell: any) => {
-            if (!spell) return;
-            if (spell.thumbnail) urlsToPreload.add(`/Library/${spell.thumbnail}`);
-            if (Array.isArray(spell.blueprints)) {
-                spell.blueprints.forEach((bp: any) => {
-                    // 加入音效
-                    if (bp.sound && typeof bp.sound === "string") {
-                        urlsToPreload.add(`/sounds/${bp.sound}`);
-                    }
-                    // 加入 WebM 動畫
-                    if (bp.id && (effectRecord as Record<string, any>)[bp.id]) {
-                        const effect = (effectRecord as Record<string, any>)[bp.id];
-                        if (effect.basename && effect.variants) {
-                            const variantKey = Object.keys(effect.variants)[0];
-                            if (variantKey) {
-                                const variantName = effect.variants[variantKey].name[0];
-                                urlsToPreload.add(`/Library/${effect.basename}_${variantName}.webm`);
-                            }
-                        }
-                    }
+        // Scan user spellbook groups
+        const spellbookGroups = safeJsonParse<Record<string, any[]>>(
+            localStorage.getItem(`${APP_KEY}/spellbook/${OBR.room.id}`),
+            {}
+        );
+        for (const group of Object.values(spellbookGroups)) {
+            if (Array.isArray(group)) {
+                group.forEach((inst: any) => {
+                    if (typeof inst === "string") spellIdsToPreload.add(inst);
+                    else if (inst?.baseSpellId) spellIdsToPreload.add(inst.baseSpellId);
                 });
-            }
-        };
-
-        // 🌟 核心目標 A：掃描使用者的「法術書」
-        const spellListJSON = localStorage.getItem(`${constants.SPELL_LIST_METADATA_KEY}/${OBR.room.id}`);
-        if (spellListJSON) {
-            const spellList = JSON.parse(spellListJSON);
-            // 假設 spellList 是陣列或物件，將裡面的法術 ID 抽出來預載
-            if (Array.isArray(spellList)) {
-                spellList.forEach((id: string) => addSpellAssets(getSpellData(id)));
-            } else if (typeof spellList === "object") {
-                Object.keys(spellList).forEach((id: string) => addSpellAssets(getSpellData(id)));
             }
         }
 
-        // 🌟 核心目標 B：掃描「目前場景地圖上」的所有 Token
-        const items = await OBR.scene.items.getItems();
-        items.forEach((item) => {
-            const equippedSpell = item.metadata["embers-custom/equipped-spell"];
-            // 處理 Token 身上綁定的是單一法術或多個法術的情況
-            if (typeof equippedSpell === "string") {
-                addSpellAssets(getSpellData(equippedSpell));
-            } else if (Array.isArray(equippedSpell)) {
-                equippedSpell.forEach(id => addSpellAssets(getSpellData(id)));
-            }
-        });
+        // Scan tokens currently on the scene
+        collectSpellIdsFromItems(items, spellIdsToPreload);
 
+        await preloadSpellsByIds(spellIdsToPreload, isGM, customSpells);
     } catch (e) {
-        console.warn("[Embers Background] 精準預載掃描失敗:", e);
+        console.warn("[Embers Background] Targeted preload failed:", e);
     }
-
-    // 🌟 執行溫和預載：只下載清單上的這幾招！
-    urlsToPreload.forEach((url) => {
-        const fullUrl = url.startsWith("http") ? url : window.location.origin + url;
-        fetch(fullUrl, { mode: 'cors', cache: 'force-cache' }).catch(() => {});
-    });
 }
 
 function loadSpellListFromLocalStorage() {
@@ -123,38 +238,16 @@ function setupScene() {
     // 👇 1. 啟動精準預載 (只載入法術書與地圖 Token 的素材) 👇
     targetedPreloadAssets();
 
-    // 👇 2. 依然保留這個監聽器 👇
-    // 當 DM 在戰鬥中途拉了一隻「新怪物 Token」上場時，自動瞬間幫大家下載那隻怪物的專屬招式
-    const preloadedSpells = new Set<string>(); // 快取已預載的法術ID，避免拖曳時頻繁觸發
+    // Automatically preload assets when new tokens with spells are added to the scene
     let preloadTimeoutId: number;
     const unsubscribeItems = OBR.scene.items.onChange((items) => {
         clearTimeout(preloadTimeoutId);
-        preloadTimeoutId = window.setTimeout(() => {
-            items.forEach((item) => {
-                const equipped = item.metadata["embers-custom/equipped-spell"];
-                if (!equipped) return;
-
-                // 兼容單一法術字串或多法術陣列
-                const spellIds = Array.isArray(equipped) ? equipped : [equipped];
-
-                spellIds.forEach((spellId) => {
-                    if (typeof spellId !== "string" || preloadedSpells.has(spellId)) return;
-
-                    const spell = (spellsRecord as Record<string, any>)[spellId];
-                    if (spell) {
-                        preloadedSpells.add(spellId);
-                        if (spell.thumbnail) fetch(window.location.origin + `/Library/${spell.thumbnail}`, { mode: 'cors', cache: 'force-cache' }).catch(() => {});
-                        if (Array.isArray(spell.blueprints)) {
-                            spell.blueprints.forEach((bp: any) => {
-                                if (bp.sound && typeof bp.sound === "string") {
-                                    fetch(window.location.origin + `/sounds/${bp.sound}`, { mode: 'cors', cache: 'force-cache' }).catch(() => {});
-                                }
-                            });
-                        }
-                    }
-                });
-            });
-        }, 500); // 效能優化：加入 500ms 防抖，避免移動 Token 造成背景狂掃描
+        preloadTimeoutId = window.setTimeout(async () => {
+            const role = await OBR.player.getRole();
+            const newSpellIds = new Set<string>();
+            collectSpellIdsFromItems(items, newSpellIds);
+            await preloadSpellsByIds(newSpellIds, role === "GM");
+        }, 500);
     });
 
     let interval: number | null = null;
@@ -166,7 +259,7 @@ function setupScene() {
         OBR.player.getRole(),
         OBR.player.getId(),
     ]).then(([role, id]) => {
-        unsubscribeTool = setupEffectsTool(role, id);
+        unsubscribeTool = setupEffectsTool(role, id) ?? null;
         unsubscribeLocalSpells = setupLocalSpells(role);
 
         if (role === "GM") {
@@ -186,7 +279,7 @@ function setupScene() {
         if (unsubscribeLocalSpells) unsubscribeLocalSpells();
         if (interval !== null) clearInterval(interval);
 
-        unsubscribeTool = setupEffectsTool(player.role, player.id);
+        unsubscribeTool = setupEffectsTool(player.role, player.id) ?? null;
         unsubscribeLocalSpells = setupLocalSpells(player.role);
         interval = window.setInterval(() => {
             sendSpellsUpdate("all");
