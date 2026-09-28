@@ -305,13 +305,31 @@ function probeVideoDuration(blob: Blob): Promise<number | null> {
     });
 }
 
-export function prefetchAssets(assets: string[]) {
+const backgroundVideoQueue: (() => Promise<void>)[] = [];
+let activeVideoDownloads = 0;
+const MAX_CONCURRENT_VIDEOS = 2;
+
+function processVideoQueue() {
+    while (activeVideoDownloads < MAX_CONCURRENT_VIDEOS && backgroundVideoQueue.length > 0) {
+        const nextTask = backgroundVideoQueue.shift();
+        if (nextTask) {
+            activeVideoDownloads++;
+            nextTask().finally(() => {
+                activeVideoDownloads--;
+                processVideoQueue();
+            });
+        }
+    }
+}
+
+export function prefetchAssets(assets: string[], isBackground: boolean = false) {
     const fetches = assets.map(asset => {
         const existing = inFlightPrefetches.get(asset);
         if (existing) {
             return existing;
         }
-        const promise = (async () => {
+
+        const downloadAndProbe = async () => {
             try {
                 const response = await fetch(
                     asset,
@@ -328,7 +346,18 @@ export function prefetchAssets(assets: string[]) {
             } catch (e) {
                 console.warn(`[Embers] Prefetch failed for ${asset}`, e);
             }
-        })();
+        };
+
+        const promise = isBackground
+            ? new Promise<void>((resolve) => {
+                backgroundVideoQueue.push(async () => {
+                    await downloadAndProbe();
+                    resolve();
+                });
+                processVideoQueue();
+            })
+            : downloadAndProbe();
+
         inFlightPrefetches.set(asset, promise);
         return promise;
     });

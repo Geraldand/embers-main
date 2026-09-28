@@ -7,10 +7,7 @@ import SpellBook from "../components/SpellBook";
 import StoryManager from "../components/StoryManager";
 import { SplashScreen } from "../components/SplashScreen";
 import { useOBR } from "../react-obr/providers";
-
-function playClickSound() {
-    try { const audio = new Audio('/click.mp3'); audio.volume = 0.15; audio.play().catch(() => { }); } catch (e) { }
-}
+import { playClickSound } from "../utils";
 
 export default function Main() {
     const obr = useOBR();

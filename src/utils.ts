@@ -11,10 +11,30 @@ export function safeJsonParse<T>(jsonString: string | null, fallback: T): T {
     }
 }
 
-// Add global audio unlocker
+// Add global audio unlocker and cached UI click sound
 let isAudioUnlocked = false;
+let clickAudio: HTMLAudioElement | null = null;
+
+function getClickAudio(): HTMLAudioElement {
+    if (!clickAudio) {
+        clickAudio = new Audio("/click.mp3");
+        clickAudio.preload = "auto";
+        clickAudio.volume = 0.15;
+    }
+    return clickAudio;
+}
+
+export function playClickSound() {
+    try {
+        const audio = getClickAudio();
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+    } catch (e) {}
+}
+
 export function unlockAudio() {
     if (isAudioUnlocked) return;
+    getClickAudio().load();
     const audio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA");
     audio.volume = 0;
     audio.play().then(() => {
@@ -142,11 +162,27 @@ export const easingFunctions = {
     outQuad,
     inOutQuad
 };
-// 紀錄各音效上次播放時間，避免多目標同時爆音
+// Record last play time for each sound to prevent audio clipping on multiple targets
 const soundLastPlayMap = new Map<string, number>();
 const preloadedAudioMap = new Map<string, Promise<string>>();
+const soundQueue: (() => Promise<void>)[] = [];
+let activeSoundDownloads = 0;
+const MAX_CONCURRENT_SOUNDS = 2;
 
-export function preloadSound(soundUrl: string): Promise<string> {
+function processSoundQueue() {
+    while (activeSoundDownloads < MAX_CONCURRENT_SOUNDS && soundQueue.length > 0) {
+        const nextTask = soundQueue.shift();
+        if (nextTask) {
+            activeSoundDownloads++;
+            nextTask().finally(() => {
+                activeSoundDownloads--;
+                processSoundQueue();
+            });
+        }
+    }
+}
+
+export function preloadSound(soundUrl: string, isBackground: boolean = false): Promise<string> {
     if (!soundUrl || soundUrl === "none") {
         return Promise.resolve("");
     }
@@ -159,7 +195,7 @@ export function preloadSound(soundUrl: string): Promise<string> {
         return existing;
     }
 
-    const promise = (async () => {
+    const runFetch = async () => {
         try {
             const response = await fetch(fullUrl, { mode: "cors", cache: "force-cache" });
             await response.blob();
@@ -167,7 +203,17 @@ export function preloadSound(soundUrl: string): Promise<string> {
             console.warn("[Embers] Audio preload failed:", fullUrl, e);
         }
         return fullUrl;
-    })();
+    };
+
+    const promise = isBackground
+        ? new Promise<string>((resolve) => {
+            soundQueue.push(async () => {
+                const res = await runFetch();
+                resolve(res);
+            });
+            processSoundQueue();
+        })
+        : runFetch();
 
     preloadedAudioMap.set(fullUrl, promise);
     return promise;
@@ -181,7 +227,7 @@ export async function prepareSpellSound(
 ): Promise<(() => void) | null> {
     if (!soundUrl || soundUrl === "none") return null;
 
-    const fullUrl = await preloadSound(soundUrl);
+    const fullUrl = await preloadSound(soundUrl, false);
     if (!fullUrl) return null;
 
     const audio = new Audio(fullUrl);

@@ -1,7 +1,7 @@
 import { APP_KEY, ASSET_LOCATION } from "../config";
 import { FaCaretDown, FaCaretUp, FaCirclePlus, FaDownload, FaFloppyDisk, FaPencil, FaTrash, FaUpload, FaGear } from "react-icons/fa6";
 import OBR from "@owlbear-rodeo/sdk";
-import { downloadFileFromString, loadJSONFile } from "../utils";
+import { downloadFileFromString, loadJSONFile, playClickSound, safeJsonParse } from "../utils";
 import { getAllSpellNames, getSpell, spellIDs } from "../effects/spells";
 import { toolID } from "../effectsTool";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -10,14 +10,9 @@ import { SpellInstance } from "../types/spells";
 import { useOBR } from "../react-obr/providers";
 import SpellDetails from "./SpellDetails";
 import Settings from "./Settings";
-import { safeJsonParse } from "../utils";
 
 type ModalType = "create-spell-group" | "add-spell" | "delete-spell-group" | "change-group-name";
 export const playerMetadataSpellbookKey = `${APP_KEY}/spellbook`;
-
-function playClickSound() {
-    try { const audio = new Audio('/click.mp3'); audio.volume = 0.15; audio.play().catch(() => { }); } catch (e) { }
-}
 
 export default function SpellBook() {
     const obr = useOBR();

@@ -6,88 +6,102 @@ import { constants } from "./constants";
 import { setupMessageListener } from "./effects/messageListener";
 import spellsRecord from "./assets/spells_record.json";
 import { APP_KEY, ASSET_LOCATION } from "./config";
-import { effects, getEffect, prefetchAssets } from "./effects/effects";
+import { getEffect, prefetchAssets } from "./effects/effects";
+import { resolveSimpleValue } from "./effects/blueprint";
 import { getSpell } from "./effects/spells";
+import { Variables } from "./types/blueprint";
 import { preloadSound, safeJsonParse } from "./utils";
 
-const preloadedSpellIds = new Set<string>();
-
-function extractEffectPrefixes(idValue: any): string[] {
-    if (!idValue) return [];
-    if (typeof idValue === "string" && !idValue.startsWith("$")) {
-        return [idValue];
-    }
-    if (typeof idValue === "object" && Array.isArray(idValue.arguments)) {
-        const results: string[] = [];
-        for (const arg of idValue.arguments) {
-            if (typeof arg === "string" && !arg.startsWith("$") && arg.length > 1) {
-                results.push(arg.endsWith(".") ? arg.slice(0, -1) : arg);
-            } else if (typeof arg === "object") {
-                results.push(...extractEffectPrefixes(arg));
-            }
-        }
-        return results;
-    }
-    return [];
+interface SpellPreloadTask {
+    spellId: string;
+    params?: Record<string, unknown>;
 }
 
-function addEffectNodeVideos(node: any, videoUrls: Set<string>) {
-    if (!node || typeof node !== "object") return;
-    if (node.basename && node.variants) {
-        for (const variant of Object.values(node.variants) as any[]) {
-            if (variant && Array.isArray(variant.name)) {
-                for (const name of variant.name) {
-                    videoUrls.add(`${ASSET_LOCATION}/${node.basename}_${name}.webm`);
+const preloadedTaskKeys = new Set<string>();
+
+function buildSpellVariables(spell: any, spellId: string, customParams?: Record<string, unknown>): Variables {
+    const variables: Variables = {};
+
+    if (Array.isArray(spell.parameters)) {
+        for (const param of spell.parameters) {
+            if (param && param.id && param.defaultValue !== undefined) {
+                variables[param.id] = param.defaultValue;
+            }
+        }
+    }
+
+    const savedParams = safeJsonParse<Record<string, unknown>>(
+        localStorage.getItem(`${APP_KEY}/spell-parameters/${spellId}`),
+        {}
+    );
+    Object.assign(variables, savedParams);
+
+    if (customParams && typeof customParams === "object") {
+        Object.assign(variables, customParams);
+    }
+
+    return variables;
+}
+
+function collectBlueprintAssets(
+    blueprints: any[] | undefined,
+    variables: Variables,
+    videoUrls: Set<string>,
+    soundUrls: Set<string>
+) {
+    if (!Array.isArray(blueprints)) return;
+
+    for (const bp of blueprints) {
+        if (!bp) continue;
+
+        // Evaluate parameter conditions to skip unused weapon or sound branches
+        if (bp.disabled !== undefined) {
+            const disabledStr = JSON.stringify(bp.disabled);
+            if (!disabledStr.includes("target")) {
+                const disabledRes = resolveSimpleValue<boolean>(bp.disabled, "disabled", "boolean", variables);
+                if (!disabledRes.error && disabledRes.value === true) {
+                    continue;
                 }
             }
         }
-        return;
-    }
-    for (const child of Object.values(node)) {
-        addEffectNodeVideos(child, videoUrls);
-    }
-}
 
-function getEffectNode(path: string): any {
-    const direct = getEffect(path);
-    if (direct) return direct;
-    let current: any = effects;
-    for (const key of path.split(".")) {
-        if (!current || typeof current !== "object") return undefined;
-        current = current[key];
-    }
-    return current;
-}
-
-function collectBlueprintAssets(blueprints: any[] | undefined, videoUrls: Set<string>, soundUrls: Set<string>) {
-    if (!Array.isArray(blueprints)) return;
-    for (const bp of blueprints) {
-        if (!bp) continue;
-        if (bp.sound && typeof bp.sound === "string" && bp.sound !== "none") {
-            soundUrls.add(bp.sound);
-        }
-        const prefixes = extractEffectPrefixes(bp.id);
-        for (const prefix of prefixes) {
-            const node = getEffectNode(prefix);
-            if (node) {
-                addEffectNodeVideos(node, videoUrls);
+        if (bp.sound !== undefined) {
+            const soundRes = resolveSimpleValue<string>(bp.sound, "sound", "string", variables);
+            if (!soundRes.error && soundRes.value && soundRes.value !== "none") {
+                soundUrls.add(soundRes.value);
             }
         }
+
+        if (bp.id !== undefined) {
+            const idRes = resolveSimpleValue<string>(bp.id, "ID", "string", variables);
+            if (!idRes.error && idRes.value && idRes.value !== "none") {
+                const effect = getEffect(idRes.value);
+                if (effect && effect.basename && effect.variants) {
+                    for (const variant of Object.values(effect.variants)) {
+                        for (const name of variant.name) {
+                            videoUrls.add(`${ASSET_LOCATION}/${effect.basename}_${name}.webm`);
+                        }
+                    }
+                }
+            }
+        }
+
         if (Array.isArray(bp.blueprints)) {
-            collectBlueprintAssets(bp.blueprints, videoUrls, soundUrls);
+            collectBlueprintAssets(bp.blueprints, variables, videoUrls, soundUrls);
         }
         if (Array.isArray(bp.instructions)) {
-            collectBlueprintAssets(bp.instructions, videoUrls, soundUrls);
+            collectBlueprintAssets(bp.instructions, variables, videoUrls, soundUrls);
         }
     }
 }
 
-function collectSpellIdsFromItems(items: Item[], targetSet: Set<string>) {
+function collectTasksFromItems(items: Item[], tasks: SpellPreloadTask[]) {
     const extractEntry = (entry: any) => {
         if (!entry) return;
         const id = entry.embersId || (typeof entry === "string" ? entry : null);
-        if (id && typeof id === "string") {
-            targetSet.add(id.trim());
+        if (id && typeof id === "string" && id.trim() !== "") {
+            const params = entry.embersVariants || entry.variants || undefined;
+            tasks.push({ spellId: id.trim(), params });
         }
     };
 
@@ -123,33 +137,41 @@ function collectSpellIdsFromItems(items: Item[], targetSet: Set<string>) {
     }
 }
 
-async function preloadSpellsByIds(spellIds: Iterable<string>, isGM: boolean, customSpells: Record<string, any> = {}) {
+async function preloadSpellTasks(tasks: SpellPreloadTask[], isGM: boolean, customSpells: Record<string, any> = {}) {
     const videoUrls = new Set<string>();
     const soundUrls = new Set<string>();
 
-    for (const spellId of spellIds) {
-        if (!spellId || preloadedSpellIds.has(spellId)) continue;
-        const spell = getSpell(spellId, isGM) || customSpells[spellId];
+    for (const task of tasks) {
+        if (!task.spellId) continue;
+        const taskKey = `${task.spellId}:${JSON.stringify(task.params || {})}`;
+        if (preloadedTaskKeys.has(taskKey)) continue;
+
+        const spell = getSpell(task.spellId, isGM) || customSpells[task.spellId];
         if (!spell) continue;
 
-        preloadedSpellIds.add(spellId);
+        preloadedTaskKeys.add(taskKey);
         if (spell.thumbnail) {
             videoUrls.add(`${ASSET_LOCATION}/${spell.thumbnail}`);
         }
-        collectBlueprintAssets(spell.blueprints, videoUrls, soundUrls);
-        collectBlueprintAssets(spell.onDestroyBlueprints, videoUrls, soundUrls);
+
+        const variables = buildSpellVariables(spell, task.spellId, task.params);
+        collectBlueprintAssets(spell.blueprints, variables, videoUrls, soundUrls);
+        collectBlueprintAssets(spell.onDestroyBlueprints, variables, videoUrls, soundUrls);
     }
 
+    // Preload small audio assets first so sound effects are ready immediately
+    await Promise.all(
+        Array.from(soundUrls).map(sound => preloadSound(sound, true).catch(() => {}))
+    );
+
+    // Preload video assets in a rate-limited background queue
     if (videoUrls.size > 0) {
-        prefetchAssets(Array.from(videoUrls)).catch(() => {});
+        prefetchAssets(Array.from(videoUrls), true).catch(() => {});
     }
-    soundUrls.forEach(sound => {
-        preloadSound(sound).catch(() => {});
-    });
 }
 
 async function targetedPreloadAssets() {
-    preloadSound("/click.mp3").catch(() => {});
+    preloadSound("/click.mp3", false).catch(() => {});
 
     try {
         const [roomMeta, role, items] = await Promise.all([
@@ -159,7 +181,7 @@ async function targetedPreloadAssets() {
         ]);
         const isGM = role === "GM";
         const customSpells = (roomMeta["embers-custom/spells"] || {}) as Record<string, any>;
-        const spellIdsToPreload = new Set<string>();
+        const tasks: SpellPreloadTask[] = [];
 
         // Scan custom spell list
         const customList = safeJsonParse<any>(
@@ -171,12 +193,12 @@ async function targetedPreloadAssets() {
             customList.forEach((entry: any) => {
                 const id = Array.isArray(entry) ? entry[0] : entry;
                 if (typeof id === "string") {
-                    spellIdsToPreload.add(id.startsWith("$.") ? id : `$.${id}`);
+                    tasks.push({ spellId: id.startsWith("$.") ? id : `$.${id}` });
                 }
             });
         }
 
-        // Scan user spellbook groups
+        // Scan user spellbook groups with their bound parameters
         const spellbookGroups = safeJsonParse<Record<string, any[]>>(
             localStorage.getItem(`${APP_KEY}/spellbook/${OBR.room.id}`),
             {}
@@ -184,16 +206,19 @@ async function targetedPreloadAssets() {
         for (const group of Object.values(spellbookGroups)) {
             if (Array.isArray(group)) {
                 group.forEach((inst: any) => {
-                    if (typeof inst === "string") spellIdsToPreload.add(inst);
-                    else if (inst?.baseSpellId) spellIdsToPreload.add(inst.baseSpellId);
+                    if (typeof inst === "string") {
+                        tasks.push({ spellId: inst });
+                    } else if (inst?.baseSpellId) {
+                        tasks.push({ spellId: inst.baseSpellId, params: inst.parameters });
+                    }
                 });
             }
         }
 
-        // Scan tokens currently on the scene
-        collectSpellIdsFromItems(items, spellIdsToPreload);
+        // Scan tokens currently on the scene with their bound parameters
+        collectTasksFromItems(items, tasks);
 
-        await preloadSpellsByIds(spellIdsToPreload, isGM, customSpells);
+        await preloadSpellTasks(tasks, isGM, customSpells);
     } catch (e) {
         console.warn("[Embers Background] Targeted preload failed:", e);
     }
@@ -238,15 +263,15 @@ function setupScene() {
     // 👇 1. 啟動精準預載 (只載入法術書與地圖 Token 的素材) 👇
     targetedPreloadAssets();
 
-    // Automatically preload assets when new tokens with spells are added to the scene
+    // Automatically preload bound assets when new tokens are added to the scene
     let preloadTimeoutId: number;
     const unsubscribeItems = OBR.scene.items.onChange((items) => {
         clearTimeout(preloadTimeoutId);
         preloadTimeoutId = window.setTimeout(async () => {
             const role = await OBR.player.getRole();
-            const newSpellIds = new Set<string>();
-            collectSpellIdsFromItems(items, newSpellIds);
-            await preloadSpellsByIds(newSpellIds, role === "GM");
+            const newTasks: SpellPreloadTask[] = [];
+            collectTasksFromItems(items, newTasks);
+            await preloadSpellTasks(newTasks, role === "GM");
         }, 500);
     });
 

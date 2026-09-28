@@ -1,11 +1,9 @@
-// src/components/SplashScreen.tsx
 import { useState } from "react";
 import { FaPen, FaCirclePlus, FaBookOpen, FaTrash, FaCaretDown, FaCaretUp, FaXmark, FaArrowDownWideShort, FaArrowUpWideShort } from "react-icons/fa6";
 import { Recap } from "./StoryManager/types";
 import { useStoryData } from "./StoryManager/store";
 import { LEGACY_THEMES } from "./StoryManager/constants";
-
-function playClickSound() { try { const audio = new Audio('/click.mp3'); audio.volume = 0.15; audio.play().catch(() => { }); } catch (e) { } }
+import { playClickSound } from "../utils";
 
 export const SplashScreen = ({ role, initialMode, onReady }: { role: "GM" | "PLAYER" | null; initialMode: "latest" | "list"; onReady: () => void; }) => {
     const { recaps, isGM, saveRecaps } = useStoryData();
