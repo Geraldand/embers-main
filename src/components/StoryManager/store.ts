@@ -7,11 +7,41 @@ const LOCAL_STORAGE_KEY = "eu.armindo.embers/story-data";
 const META_VERSION_KEY = "eu.armindo.embers/story-version";
 const SYNC_CHANNEL = "eu.armindo.embers/story-sync";
 const SHOP_EVENT_CHANNEL = "com.yourname.character-sheet-extension/shop-events";
+const CHUNK_SIZE = 6000;
 
-// Helper function to compress and send sync messages
-const sendCompressedSync = (payload: any, options: { destination: "ALL" | "REMOTE" | "LOCAL" }) => {
+interface ChunkBuffer {
+    chunks: string[];
+    received: number;
+    total: number;
+}
+
+const incomingChunks: Record<string, ChunkBuffer> = {};
+
+// Compress and split large payloads into smaller chunks before broadcasting
+const sendCompressedSync = async (payload: any, options: { destination: "ALL" | "REMOTE" | "LOCAL" }) => {
     const compressed = LZString.compressToUTF16(JSON.stringify(payload));
-    OBR.broadcast.sendMessage(SYNC_CHANNEL, compressed, options);
+    if (compressed.length <= CHUNK_SIZE) {
+        await OBR.broadcast.sendMessage(SYNC_CHANNEL, compressed, options);
+        return;
+    }
+
+    const messageId = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    const total = Math.ceil(compressed.length / CHUNK_SIZE);
+
+    for (let index = 0; index < total; index++) {
+        const chunk = compressed.slice(index * CHUNK_SIZE, (index + 1) * CHUNK_SIZE);
+        await OBR.broadcast.sendMessage(
+            SYNC_CHANNEL,
+            {
+                __isChunk: true,
+                messageId,
+                index,
+                total,
+                chunk
+            },
+            options
+        );
+    }
 };
 
 interface StoryData {
@@ -68,47 +98,69 @@ class StoryStore {
         const role = await OBR.player.getRole();
         this.isGM = role === "GM";
 
-        if (this.isGM) {
-            const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}/${OBR.room.id}`);
-            if (saved) {
-                try {
-                    const parsed = JSON.parse(saved);
-                    this.data = { ...defaultData, ...parsed };
-                    if (!this.data.questCategories || this.data.questCategories.length === 0) {
-                        this.data.questCategories = defaultData.questCategories;
-                    }
-                    this.data.questCategories = this.data.questCategories.map(c => ({
-                        ...c,
-                        isVisible: c.isVisible ?? true
-                    }));
-                } catch (e) { console.error("Failed to parse story data", e); }
+        // Load cached data from localStorage first for both GM and players
+        const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}/${OBR.room.id}`);
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                this.data = { ...defaultData, ...parsed };
+                if (!this.data.questCategories || this.data.questCategories.length === 0) {
+                    this.data.questCategories = defaultData.questCategories;
+                }
+                this.data.questCategories = this.data.questCategories.map(c => ({
+                    ...c,
+                    isVisible: c.isVisible ?? true
+                }));
+                this.notify();
+            } catch (e) {
+                console.error("Failed to parse story data", e);
             }
-            this.publishData();
-        } else {
-            // Use the compressed sync helper
-            sendCompressedSync({ type: "REQUEST_SYNC" }, { destination: "ALL" });
         }
 
         OBR.room.onMetadataChange((meta) => {
             const newVersion = meta[META_VERSION_KEY] as number;
             if (!this.isGM && newVersion && newVersion > this.currentVersion) {
-                // Use the compressed sync helper
                 sendCompressedSync({ type: "REQUEST_SYNC" }, { destination: "ALL" });
             }
         });
 
         OBR.broadcast.onMessage(SYNC_CHANNEL, async (msg) => {
-            let payload = msg.data as any;
+            let rawData = msg.data as any;
+
+            // Reassemble chunked broadcast messages
+            if (rawData && typeof rawData === "object" && rawData.__isChunk) {
+                const { messageId, index, total, chunk } = rawData;
+                if (!incomingChunks[messageId]) {
+                    incomingChunks[messageId] = {
+                        chunks: new Array(total),
+                        received: 0,
+                        total
+                    };
+                }
+                const entry = incomingChunks[messageId];
+                if (entry.chunks[index] === undefined) {
+                    entry.chunks[index] = chunk;
+                    entry.received++;
+                }
+                if (entry.received < entry.total) {
+                    return;
+                }
+                rawData = entry.chunks.join("");
+                delete incomingChunks[messageId];
+            }
+
+            let payload = rawData;
             if (typeof payload === "string") {
                 try {
                     payload = JSON.parse(LZString.decompressFromUTF16(payload));
                 } catch (e) {
                     console.warn("Failed to decompress broadcast message", e);
+                    return;
                 }
             }
+            if (!payload) return;
 
             if (payload.type === "REQUEST_SHOPS") {
-                // Use the compressed sync helper
                 sendCompressedSync({
                     type: "SYNC_SHOPS",
                     shops: this.data.shops
@@ -116,14 +168,13 @@ class StoryStore {
                 return;
             }
             if (payload.type === "REQUEST_SYNC" && this.isGM) {
-                // Use the compressed sync helper
                 sendCompressedSync({
-                    type: "SYNC_FULL_STATE", version: this.currentVersion, data: this.data, targetConnectionId: msg.connectionId
+                    type: "SYNC_FULL_STATE",
+                    version: this.currentVersion,
+                    data: this.data,
+                    targetConnectionId: msg.connectionId
                 }, { destination: "REMOTE" });
             } else if (payload.type === "SYNC_FULL_STATE" && !this.isGM) {
-                const myConnectionId = await OBR.player.getConnectionId();
-                if (payload.targetConnectionId && payload.targetConnectionId !== "ALL" && payload.targetConnectionId !== myConnectionId) return;
-
                 if (this.currentVersion !== 0) {
                     const checkUnread = (oldArr: any[], newArr: any[]) => {
                         const oldMap = new Map(oldArr.map(i => [i.id, i]));
@@ -141,6 +192,7 @@ class StoryStore {
                 }
                 this.data = payload.data;
                 this.currentVersion = payload.version;
+                localStorage.setItem(`${LOCAL_STORAGE_KEY}/${OBR.room.id}`, JSON.stringify(this.data));
                 this.notify();
             } else if (payload.type === "FORCE_OPEN_LEGACY") {
                 window.dispatchEvent(new CustomEvent("force-open-legacy", { detail: payload.legacyId }));
@@ -156,7 +208,11 @@ class StoryStore {
                 this.saveQuestCategories(payload.cats);
             }
         });
-
+        if (this.isGM) {
+            await this.publishData();
+        } else {
+            await sendCompressedSync({ type: "REQUEST_SYNC" }, { destination: "ALL" });
+        }
         OBR.broadcast.onMessage(SHOP_EVENT_CHANNEL, async (msg) => {
             const data = msg.data as any;
             if (!data || !this.isGM) return;
@@ -260,8 +316,8 @@ class StoryStore {
         this.currentVersion = Date.now();
         localStorage.setItem(`${LOCAL_STORAGE_KEY}/${OBR.room.id}`, JSON.stringify(this.data));
         await OBR.room.setMetadata({ [META_VERSION_KEY]: this.currentVersion });
-        // Use the compressed sync helper
-        sendCompressedSync({
+        // Broadcast full state in chunks
+        await sendCompressedSync({
             type: "SYNC_FULL_STATE", version: this.currentVersion, data: this.data, targetConnectionId: "ALL"
         }, { destination: "ALL" });
         this.notify();
