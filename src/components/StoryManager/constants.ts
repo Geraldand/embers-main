@@ -458,17 +458,24 @@ export const LOOT_SCENARIO_LABELS: Record<string, string> = {
     "volcano_fortress": "黑曜石要塞", "acid_swamp": "劇毒沼澤", "meteor_crater": "隕石坑", "underdark_crystal": "輻射水晶洞"
 };
 
-export const LEGACY_THEMES: Record<string, { bg: string; text: string; label: string }> = {
-    standard: { bg: "#f4e4bc", text: "#3e2723", label: "標準紙張" },
-    private: { bg: "#dcb26b", text: "#4a0404", label: "私人與機密書信" },
-    official: { bg: "#f5f5f0", text: "#001f4d", label: "官方與商務文獻" },
-    academic: { bg: "#5c4033", text: "#e8c396", label: "學術與探險日誌" },
-    history: { bg: "#c2b280", text: "#1a1a1a", label: "歷史文獻與古籍" },
-    folklore: { bg: "#e6e6e6", text: "#2b2b2b", label: "民間傳說與日常雜項" },
-    supernatural: { bg: "#e0f7fa", text: "#008b8b", label: "超自然與超常規載體" },
-    blood: { bg: "#2a0808", text: "#ffb3b3", label: "染血秘卷" },
-    poison: { bg: "#1a2f1c", text: "#b3ffb3", label: "淬毒密函" },
-    ocean: { bg: "#0f2027", text: "#88d8b0", label: "深海殘篇" }
+export const LEGACY_THEMES: Record<string, { bg: string; text: string; border?: string; accent?: string; headerColor?: string; label: string }> = {
+    panel: { bg: "#2d3143", text: "#f3f4f6", border: "rgba(255, 255, 255, 0.08)", accent: "#c084fc", headerColor: "#9c81d8", label: "預設深色面板" },
+    standard: { bg: "#f4e4bc", text: "#3e2723", border: "rgba(141, 110, 99, 0.25)", accent: "#b45309", headerColor: "#fcd34d", label: "標準紙張" },
+    private: { bg: "#dcb26b", text: "#4a0404", border: "rgba(127, 29, 29, 0.22)", accent: "#991b1b", headerColor: "#fbbf24", label: "私人與機密書信" },
+    official: { bg: "#f5f5f0", text: "#001f4d", border: "rgba(30, 64, 175, 0.18)", accent: "#2563eb", headerColor: "#93c5fd", label: "官方與商務文獻" },
+    academic: { bg: "#5c4033", text: "#e8c396", border: "rgba(245, 158, 11, 0.2)", accent: "#fbbf24", headerColor: "#fdba74", label: "學術與探險日誌" },
+    history: { bg: "#c2b280", text: "#1a1a1a", border: "rgba(75, 85, 99, 0.22)", accent: "#9a3412", headerColor: "#fde047", label: "歷史文獻與古籍" },
+    folklore: { bg: "#e6e6e6", text: "#2b2b2b", border: "rgba(82, 82, 91, 0.18)", accent: "#7c3aed", headerColor: "#d8b4fe", label: "民間傳說與日常雜項" },
+    supernatural: { bg: "#e0f7fa", text: "#006064", border: "rgba(0, 172, 193, 0.22)", accent: "#0284c7", headerColor: "#67e8f9", label: "超自然與超常規載體" },
+    blood: { bg: "#2a0808", text: "#ffb3b3", border: "rgba(239, 68, 68, 0.22)", accent: "#f87171", headerColor: "#fca5a5", label: "染血秘卷" },
+    poison: { bg: "#1a2f1c", text: "#b3ffb3", border: "rgba(74, 222, 128, 0.2)", accent: "#4ade80", headerColor: "#86efac", label: "淬毒密函" },
+    ocean: { bg: "#0f2027", text: "#88d8b0", border: "rgba(56, 189, 248, 0.2)", accent: "#38bdf8", headerColor: "#7dd3fc", label: "深海殘篇" },
+    arcane: { bg: "#1e1b4b", text: "#e0e7ff", border: "rgba(168, 85, 247, 0.22)", accent: "#c084fc", headerColor: "#d8b4fe", label: "奧術星輝" },
+    gilded: { bg: "#271c19", text: "#fef08a", border: "rgba(250, 204, 21, 0.22)", accent: "#facc15", headerColor: "#fde047", label: "皇家金箔" },
+    ember: { bg: "#3b170c", text: "#fed7aa", border: "rgba(251, 146, 60, 0.22)", accent: "#fb923c", headerColor: "#fdba74", label: "餘燼焦土" },
+    frost: { bg: "#172554", text: "#dbeafe", border: "rgba(96, 165, 250, 0.22)", accent: "#60a5fa", headerColor: "#93c5fd", label: "極地冰霜" },
+    nature: { bg: "#14291e", text: "#dcfce7", border: "rgba(34, 197, 94, 0.2)", accent: "#4ade80", headerColor: "#86efac", label: "翠林古卷" },
+    shadow: { bg: "#18181b", text: "#d4d4d8", border: "rgba(161, 161, 170, 0.18)", accent: "#f472b6", headerColor: "#e4e4e7", label: "幽影秘錄" }
 };
 
 export function getRandomScenarioText(type: "shop" | "loot", categoryKey: string): string {

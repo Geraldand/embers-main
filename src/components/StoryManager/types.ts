@@ -4,6 +4,7 @@ export interface QuestCategory {
     id: string;
     name: string;
     isVisible?: boolean;
+    themeId?: string;
 }
 
 export interface Quest {
@@ -14,6 +15,16 @@ export interface Quest {
     isVisible: boolean;
     isCompleted: boolean;
     markerStyle?: "checkbox" | "none";
+    createdAt: number;
+}
+
+export interface KeywordItem {
+    id: string;
+    keyword: string;
+    subtitle?: string;
+    description: string;
+    imageUrl?: string;
+    themeId?: string;
     createdAt: number;
 }
 

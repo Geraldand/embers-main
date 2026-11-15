@@ -201,30 +201,15 @@ export default function LootTab() {
                     }
                 }
 
-                if(activeTokenId) fetchTokenData(activeTokenId); 
-
-                // Ensure local loot state updates correctly
-                if (data.sourceId && receivedItem) {
-                    saveLoots(loots.map(s => {
-                        if (s.id !== data.sourceId) return s;
-                        const updatedItems = s.items.map(i => {
-                            if (i.id === receivedItem.id && !i.isInfinite) {
-                                return { ...i, quantity: Math.max(0, i.quantity - data.quantity) };
-                            }
-                            return i;
-                        });
-                        return { ...s, items: updatedItems };
-                    }));
-                }
-
-            } else { 
-                setToastMsg({ text: data.message, type: "error" }); 
+                if (activeTokenId) fetchTokenData(activeTokenId);
+            } else {
+                setToastMsg({ text: data.message, type: "error" });
             }
             setTimeout(() => setToastMsg(null), 3000);
         };
         const unsub = OBR.broadcast.onMessage(SHOP_EVENT_CHANNEL, handleLootResponses);
         return () => unsub();
-    }, [activeTokenId, loots]);
+    }, [activeTokenId]);
 
     const lastExpandedRef = useRef<string | null>(null);
     useEffect(() => {
