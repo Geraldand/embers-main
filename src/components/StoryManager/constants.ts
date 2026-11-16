@@ -475,7 +475,15 @@ export const LEGACY_THEMES: Record<string, { bg: string; text: string; border?: 
     ember: { bg: "#3b170c", text: "#fed7aa", border: "rgba(251, 146, 60, 0.22)", accent: "#fb923c", headerColor: "#fdba74", label: "餘燼焦土" },
     frost: { bg: "#172554", text: "#dbeafe", border: "rgba(96, 165, 250, 0.22)", accent: "#60a5fa", headerColor: "#93c5fd", label: "極地冰霜" },
     nature: { bg: "#14291e", text: "#dcfce7", border: "rgba(34, 197, 94, 0.2)", accent: "#4ade80", headerColor: "#86efac", label: "翠林古卷" },
-    shadow: { bg: "#18181b", text: "#d4d4d8", border: "rgba(161, 161, 170, 0.18)", accent: "#f472b6", headerColor: "#e4e4e7", label: "幽影秘錄" }
+    shadow: { bg: "#18181b", text: "#d4d4d8", border: "rgba(161, 161, 170, 0.18)", accent: "#f472b6", headerColor: "#e4e4e7", label: "幽影秘錄" },
+    vellum: { bg: "#fbf7ec", text: "#2c1e16", border: "rgba(120, 85, 58, 0.22)", accent: "#9a3412", headerColor: "#fbbf24", label: "象牙羊皮紙" },
+    letterpress: { bg: "#f7f1e3", text: "#222222", border: "rgba(68, 64, 60, 0.2)", accent: "#b91c1c", headerColor: "#fca5a5", label: "活版印刷書頁" },
+    gilded_letter: { bg: "#f9f3e5", text: "#3b2314", border: "rgba(180, 83, 9, 0.25)", accent: "#b45309", headerColor: "#fcd34d", label: "燙金信箋" },
+    herbarium: { bg: "#e8ece2", text: "#1f3326", border: "rgba(21, 128, 61, 0.22)", accent: "#15803d", headerColor: "#86efac", label: "植物標本手札" },
+    blueprint: { bg: "#16324f", text: "#e0f2fe", border: "rgba(56, 189, 248, 0.25)", accent: "#38bdf8", headerColor: "#7dd3fc", label: "航海建築藍圖" },
+    burnt_scroll: { bg: "#3a2618", text: "#f5e6cc", border: "rgba(251, 146, 60, 0.25)", accent: "#fb923c", headerColor: "#fdba74", label: "火燎殘卷" },
+    wax_tablet: { bg: "#6e3b2b", text: "#fde68a", border: "rgba(253, 230, 138, 0.22)", accent: "#fbbf24", headerColor: "#fef08a", label: "古典泥版銘文" },
+    star_chart: { bg: "#111827", text: "#dbeafe", border: "rgba(129, 140, 248, 0.25)", accent: "#818cf8", headerColor: "#a5b4fc", label: "星象觀測手稿" }
 };
 
 export function getRandomScenarioText(type: "shop" | "loot", categoryKey: string): string {

@@ -17,7 +17,33 @@ body, #root {
 .no-scrollbar::-webkit-scrollbar {
     display: none;
 }
+
 .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+}
+
+/* Custom scrollbar for content editor textareas */
+.editor-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 129, 216, 0.55) rgba(0, 0, 0, 0.2);
+}
+
+.editor-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.editor-scrollbar::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 9999px;
+    margin: 6px 0;
+}
+
+.editor-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(156, 129, 216, 0.55);
+    border-radius: 9999px;
+}
+
+.editor-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(156, 129, 216, 0.9);
 }

@@ -1,3 +1,4 @@
+// src/components/StoryManager/store.ts
 import OBR from "@owlbear-rodeo/sdk";
 import { useState, useEffect } from "react";
 import LZString from "lz-string";
@@ -86,10 +87,12 @@ class StoryStore {
     listeners: (() => void)[] = [];
     currentVersion = 0;
     unread: Record<number, boolean> = { 0: false, 1: false, 2: false, 3: false };
+    unreadQuestIds: Record<string, boolean> = {};
     private publishTimer: number | null = null;
     private syncCheckTimer: number | null = null;
+    private txQueue: Promise<void> = Promise.resolve();
 
-    // Reload latest GM state from localStorage to keep multiple tabs or iframes synchronized
+    // Reload latest GM state from localStorage to keep multiple tabs synchronized
     private reloadGMDataFromStorage = () => {
         if (!this.isGM) return;
         const saved = localStorage.getItem(`${GM_STORAGE_KEY}/${OBR.room.id}`);
@@ -105,14 +108,18 @@ class StoryStore {
                 isVisible: c.isVisible ?? true,
                 themeId: c.themeId || "panel"
             }));
-            this.data.keywords = this.data.keywords || [];
+            this.data.keywords = (this.data.keywords || []).map(k => ({
+                ...k,
+                isVisible: k.isVisible ?? true,
+                revealedSecrets: k.revealedSecrets || []
+            }));
             this.data.logs = (this.data.logs || []).slice(0, MAX_LOGS);
         } catch (e) {
             console.error("Failed to reload GM story data", e);
         }
     };
 
-    // Prevent duplicate transaction handling across multiple GM tabs or iframes
+    // Prevent duplicate transaction handling across multiple GM instances
     private claimTransaction = (txId?: string): boolean => {
         if (!txId) return true;
         if (processedTransactions.has(txId)) return false;
@@ -128,7 +135,7 @@ class StoryStore {
         return {
             questCategories: this.data.questCategories,
             quests: this.data.quests.filter(q => q.isVisible !== false),
-            keywords: this.data.keywords || [],
+            keywords: (this.data.keywords || []).filter(k => k.isVisible !== false),
             recaps: this.data.recaps,
             shops: this.data.shops
                 .filter(s => s.isVisible !== false)
@@ -202,7 +209,11 @@ class StoryStore {
                     isVisible: c.isVisible ?? true,
                     themeId: c.themeId || "panel"
                 }));
-                this.data.keywords = this.data.keywords || [];
+                this.data.keywords = (this.data.keywords || []).map(k => ({
+                    ...k,
+                    isVisible: k.isVisible ?? true,
+                    revealedSecrets: k.revealedSecrets || []
+                }));
                 this.data.logs = (this.data.logs || []).slice(0, MAX_LOGS);
                 this.notify();
             } catch (e) {
@@ -210,11 +221,19 @@ class StoryStore {
             }
         }
 
-        // Sync state across browser tabs when localStorage changes
+        // Sync state across browser tabs and modal windows when localStorage changes
         window.addEventListener("storage", (event) => {
             if (this.isGM && event.key === `${GM_STORAGE_KEY}/${OBR.room.id}` && event.newValue) {
                 this.reloadGMDataFromStorage();
                 this.notify();
+            } else if (!this.isGM && event.key === `${PLAYER_STORAGE_KEY}/${OBR.room.id}` && event.newValue) {
+                try {
+                    const parsed = JSON.parse(event.newValue);
+                    this.data = { ...defaultData, ...parsed };
+                    this.notify();
+                } catch (e) {
+                    console.error("Failed to reload player story data", e);
+                }
             }
         });
 
@@ -309,7 +328,18 @@ class StoryStore {
                         }
                         return false;
                     };
-                    if (checkUnread(this.data.quests, payload.data.quests)) this.unread[0] = true;
+
+                    // Track specific quests that were newly added, unhidden, or modified
+                    const oldQuestMap = new Map((this.data.quests || []).map(q => [q.id, q]));
+                    for (const newQuest of (payload.data.quests || [])) {
+                        if (newQuest.isVisible === false) continue;
+                        const oldQuest = oldQuestMap.get(newQuest.id);
+                        if (!oldQuest || JSON.stringify(oldQuest) !== JSON.stringify(newQuest)) {
+                            this.unread[0] = true;
+                            this.unreadQuestIds[newQuest.id] = true;
+                        }
+                    }
+
                     if (checkUnread(this.data.shops, payload.data.shops)) this.unread[1] = true;
                     if (checkUnread(this.data.loots, payload.data.loots)) this.unread[2] = true;
                     if (checkUnread(this.data.legacies, payload.data.legacies)) this.unread[3] = true;
@@ -320,6 +350,34 @@ class StoryStore {
                 this.notify();
             } else if (payload.type === "FORCE_OPEN_LEGACY") {
                 window.dispatchEvent(new CustomEvent("force-open-legacy", { detail: payload.legacyId }));
+            } else if (payload.type === "FORCE_OPEN_KEYWORD") {
+                window.dispatchEvent(new CustomEvent("force-open-keyword", { detail: payload.keyword }));
+            } else if (payload.type === "GIFT_RECEIVED") {
+                window.dispatchEvent(new CustomEvent("gift-received", { detail: payload }));
+                if (this.isGM && payload.logMessage) {
+                    this.reloadGMDataFromStorage();
+                    this.recordLogInternal(payload.logMessage);
+                    this.publishData();
+                }
+            } else if (payload.type === "UPDATE_LEGACY_NOTES") {
+                if (this.isGM) {
+                    this.reloadGMDataFromStorage();
+                    this.data.legacies = this.data.legacies.map(l =>
+                        l.id === payload.legacyId ? { ...l, partyNotes: payload.notes } : l
+                    );
+                    this.publishData();
+                } else {
+                    this.data.legacies = this.data.legacies.map(l =>
+                        l.id === payload.legacyId ? { ...l, partyNotes: payload.notes } : l
+                    );
+                    localStorage.setItem(`${PLAYER_STORAGE_KEY}/${OBR.room.id}`, JSON.stringify(this.data));
+                    this.notify();
+                }
+                window.dispatchEvent(
+                    new CustomEvent("legacy-notes-updated", {
+                        detail: { legacyId: payload.legacyId, notes: payload.notes }
+                    })
+                );
             } else if (payload.type === "TOGGLE_QUEST" && this.isGM) {
                 this.reloadGMDataFromStorage();
                 this.saveQuests(this.data.quests.map(q => q.id === payload.questId ? { ...q, isCompleted: !q.isCompleted } : q));
@@ -345,113 +403,201 @@ class StoryStore {
             }
         });
 
-        OBR.broadcast.onMessage(SHOP_EVENT_CHANNEL, async (msg) => {
+        OBR.broadcast.onMessage(SHOP_EVENT_CHANNEL, (msg) => {
             const data = msg.data as any;
-            if (!data) return;
+            if (!data || !this.isGM) return;
 
-            if (!this.isGM) return;
-
-            if (data.type === "PURCHASE_REQUEST" || data.type === "LOOT_REQUEST" || data.type === "SELL_REQUEST") {
-                if (!this.claimTransaction(data.transactionId)) return;
-                this.reloadGMDataFromStorage();
-            } else {
+            if (data.type !== "PURCHASE_REQUEST" && data.type !== "LOOT_REQUEST" && data.type !== "SELL_REQUEST") {
                 return;
             }
 
-            const sender = (await OBR.party.getPlayers()).find(p => p.connectionId === msg.connectionId);
-            const playerName = sender ? sender.name : "某人";
+            // Enqueue every transaction sequentially to prevent concurrent stock race conditions
+            this.txQueue = this.txQueue
+                .then(async () => {
+                    if (!this.claimTransaction(data.transactionId)) return;
+                    this.reloadGMDataFromStorage();
 
-            if (data.type === "PURCHASE_REQUEST") {
-                const shop = this.data.shops.find(s => s.id === data.shopId);
-                let isBoughtItem = false;
-                let item = shop?.items.find(i => i.id === data.item.id);
+                    const sender = (await OBR.party.getPlayers()).find(p => p.connectionId === msg.connectionId);
+                    const playerName = sender ? sender.name : "某人";
+                    const reqQty = Math.floor(Number(data.quantity) || 0);
 
-                if (!item && shop?.boughtItems) {
-                    item = shop.boughtItems.find(i => i.id === data.item.id);
-                    if (item) isBoughtItem = true;
-                }
+                    if (reqQty <= 0) return;
 
-                if (shop && item && item.quantity >= data.quantity) {
-                    let newShop: Shop;
-                    if (isBoughtItem) {
-                        const newQuantity = item.quantity - data.quantity;
-                        const newBoughtItems = newQuantity > 0
-                            ? shop.boughtItems!.map(i => i.id === item!.id ? { ...i, quantity: newQuantity } : i)
-                            : shop.boughtItems!.filter(i => i.id !== item!.id);
-                        newShop = { ...shop, boughtItems: newBoughtItems };
-                    } else {
-                        newShop = { ...shop, items: shop.items.map(i => i.id === item!.id ? { ...i, quantity: i.quantity - data.quantity } : i) };
+                    if (data.type === "PURCHASE_REQUEST") {
+                        const shop = this.data.shops.find(s => s.id === data.shopId);
+                        let isBoughtItem = Boolean(data.isBoughtItem);
+                        let item = isBoughtItem
+                            ? shop?.boughtItems?.find(i => i.id === data.item.id)
+                            : shop?.items.find(i => i.id === data.item.id);
+
+                        if (!item && shop?.boughtItems) {
+                            item = shop.boughtItems.find(i => i.id === data.item.id);
+                            if (item) isBoughtItem = true;
+                        }
+
+                        if (shop && item && item.quantity >= reqQty) {
+                            const finalUnitCost = isBoughtItem
+                                ? Number(item.cost.toFixed(2))
+                                : Number((item.cost * (shop.priceMultiplier || 1)).toFixed(2));
+
+                            let newShop: Shop;
+                            if (isBoughtItem) {
+                                const newQuantity = item.quantity - reqQty;
+                                const newBoughtItems = newQuantity > 0
+                                    ? shop.boughtItems!.map(i => i.id === item!.id ? { ...i, quantity: newQuantity } : i)
+                                    : shop.boughtItems!.filter(i => i.id !== item!.id);
+                                newShop = { ...shop, boughtItems: newBoughtItems };
+                            } else {
+                                newShop = {
+                                    ...shop,
+                                    items: shop.items.map(i =>
+                                        i.id === item!.id ? { ...i, quantity: i.quantity - reqQty } : i
+                                    )
+                                };
+                            }
+
+                            const purchasedItemPayload = {
+                                ...item,
+                                cost: finalUnitCost,
+                                quantity: reqQty
+                            };
+
+                            // Commit stock deduction synchronously before broadcasting response
+                            this.data.shops = this.data.shops.map(s => s.id === shop.id ? newShop : s);
+                            this.recordLogInternal(
+                                `${playerName} 在 ${shop.name} 購買了 ${reqQty} 個 ${item.name}，單價 ${finalUnitCost.toFixed(2)} GP`
+                            );
+                            this.unread[1] = true;
+                            this.publishData();
+
+                            await OBR.broadcast.sendMessage(
+                                SHOP_EVENT_CHANNEL,
+                                {
+                                    type: "PURCHASE_RESPONSE",
+                                    success: true,
+                                    transactionId: data.transactionId,
+                                    targetConnectionId: msg.connectionId,
+                                    message: `購買成功！共花費 ${(finalUnitCost * reqQty).toFixed(2)} GP`,
+                                    itemName: item.name,
+                                    item: item.isService ? undefined : purchasedItemPayload,
+                                    serviceItem: item.isService ? purchasedItemPayload : undefined,
+                                    quantity: reqQty,
+                                    cost: finalUnitCost,
+                                    targetTokenId: data.targetTokenId
+                                },
+                                { destination: "ALL" }
+                            );
+                        } else {
+                            await OBR.broadcast.sendMessage(
+                                SHOP_EVENT_CHANNEL,
+                                {
+                                    type: "PURCHASE_RESPONSE",
+                                    success: false,
+                                    transactionId: data.transactionId,
+                                    targetConnectionId: msg.connectionId,
+                                    message: "庫存不足或商店不存在！"
+                                },
+                                { destination: "ALL" }
+                            );
+                        }
+                    } else if (data.type === "LOOT_REQUEST") {
+                        const source = this.data.loots.find(s => s.id === data.sourceId);
+                        const item = source?.items.find(i => i.id === data.item.id);
+                        if (source && item && (item.isInfinite || item.quantity >= reqQty)) {
+                            const newSource = {
+                                ...source,
+                                items: source.items.map(i =>
+                                    i.id === item.id && !i.isInfinite ? { ...i, quantity: i.quantity - reqQty } : i
+                                )
+                            };
+
+                            this.data.loots = this.data.loots.map(s => s.id === source.id ? newSource : s);
+                            this.recordLogInternal(`${playerName} 拾取了 ${reqQty} 個 ${item.name}`);
+                            this.unread[2] = true;
+                            this.publishData();
+
+                            await OBR.broadcast.sendMessage(
+                                SHOP_EVENT_CHANNEL,
+                                {
+                                    type: "LOOT_RESPONSE",
+                                    success: true,
+                                    transactionId: data.transactionId,
+                                    targetConnectionId: msg.connectionId,
+                                    message: `已拾取 ${item.name} x${reqQty}`,
+                                    item: item.isCurrency ? undefined : item,
+                                    currencyItem: item.isCurrency ? item : undefined,
+                                    quantity: reqQty,
+                                    targetTokenId: data.targetTokenId,
+                                    sourceId: data.sourceId
+                                },
+                                { destination: "ALL" }
+                            );
+                        } else {
+                            await OBR.broadcast.sendMessage(
+                                SHOP_EVENT_CHANNEL,
+                                {
+                                    type: "LOOT_RESPONSE",
+                                    success: false,
+                                    transactionId: data.transactionId,
+                                    targetConnectionId: msg.connectionId,
+                                    message: "戰利品已被拿完或不存在！"
+                                },
+                                { destination: "ALL" }
+                            );
+                        }
+                    } else if (data.type === "SELL_REQUEST") {
+                        const shop = this.data.shops.find(s => s.id === data.shopId);
+                        if (shop) {
+                            const baseItemCost = Number(data.item.cost) || 0;
+                            const effectiveMultiplier = Math.min(1, shop.priceMultiplier || 1);
+                            const unitRevenue = Number((baseItemCost * effectiveMultiplier).toFixed(2));
+
+                            const bought = shop.boughtItems ? [...shop.boughtItems] : [];
+                            const existingIndex = bought.findIndex(
+                                i => i.name === data.item.name && Number(i.cost) === unitRevenue
+                            );
+                            if (existingIndex !== -1) {
+                                bought[existingIndex].quantity += reqQty;
+                            } else {
+                                bought.push({
+                                    ...data.item,
+                                    cost: unitRevenue,
+                                    quantity: reqQty,
+                                    id: Math.random().toString(36).substring(2, 9),
+                                    isVisible: true
+                                });
+                            }
+
+                            const newShop = { ...shop, boughtItems: bought };
+
+                            this.data.shops = this.data.shops.map(s => s.id === shop.id ? newShop : s);
+                            this.recordLogInternal(
+                                `${playerName} 販售了 ${reqQty} 個 ${data.item.name} 給 ${shop.name}，單價 ${unitRevenue.toFixed(2)} GP`
+                            );
+                            this.unread[1] = true;
+                            this.publishData();
+
+                            await OBR.broadcast.sendMessage(
+                                SHOP_EVENT_CHANNEL,
+                                {
+                                    type: "SELL_RESPONSE",
+                                    success: true,
+                                    transactionId: data.transactionId,
+                                    targetConnectionId: msg.connectionId,
+                                    targetTokenId: data.targetTokenId,
+                                    itemId: data.item.id,
+                                    itemName: data.item.name,
+                                    quantity: reqQty,
+                                    revenue: unitRevenue
+                                },
+                                { destination: "ALL" }
+                            );
+                        }
                     }
-
-                    await OBR.broadcast.sendMessage(SHOP_EVENT_CHANNEL, {
-                        type: "PURCHASE_RESPONSE", success: true, transactionId: data.transactionId,
-                        targetConnectionId: msg.connectionId, message: "購買成功！",
-                        item: item.isService ? undefined : { ...item, quantity: data.quantity },
-                        serviceItem: item.isService ? { ...item, quantity: data.quantity } : undefined,
-                        quantity: data.quantity, cost: data.cost,
-                        targetTokenId: data.targetTokenId
-                    }, { destination: "ALL" });
-
-                    this.data.shops = this.data.shops.map(s => s.id === shop.id ? newShop : s);
-                    this.recordLogInternal(`${playerName} 購買了 ${data.quantity} 個 ${item.name}`);
-                    this.unread[1] = true;
-                    this.publishData();
-                } else {
-                    await OBR.broadcast.sendMessage(SHOP_EVENT_CHANNEL, {
-                        type: "PURCHASE_RESPONSE", success: false, transactionId: data.transactionId,
-                        targetConnectionId: msg.connectionId, message: "庫存不足或商店不存在！"
-                    }, { destination: "ALL" });
-                }
-            }
-            else if (data.type === "LOOT_REQUEST") {
-                const source = this.data.loots.find(s => s.id === data.sourceId);
-                const item = source?.items.find(i => i.id === data.item.id);
-                if (source && item && (item.isInfinite || item.quantity >= data.quantity)) {
-                    const newSource = { ...source, items: source.items.map(i => i.id === item.id && !i.isInfinite ? { ...i, quantity: i.quantity - data.quantity } : i) };
-
-                    await OBR.broadcast.sendMessage(SHOP_EVENT_CHANNEL, {
-                        type: "LOOT_RESPONSE", success: true, transactionId: data.transactionId,
-                        targetConnectionId: msg.connectionId, message: "拾取成功！",
-                        item: item.isCurrency ? undefined : item,
-                        currencyItem: item.isCurrency ? item : undefined,
-                        quantity: data.quantity,
-                        targetTokenId: data.targetTokenId,
-                        sourceId: data.sourceId
-                    }, { destination: "ALL" });
-
-                    this.data.loots = this.data.loots.map(s => s.id === source.id ? newSource : s);
-                    this.recordLogInternal(`${playerName} 拾取了 ${data.quantity} 個 ${item.name}`);
-                    this.unread[2] = true;
-                    this.publishData();
-                } else {
-                    await OBR.broadcast.sendMessage(SHOP_EVENT_CHANNEL, {
-                        type: "LOOT_RESPONSE", success: false, transactionId: data.transactionId,
-                        targetConnectionId: msg.connectionId, message: "戰利品已被拿完或不存在！"
-                    }, { destination: "ALL" });
-                }
-            }
-            else if (data.type === "SELL_REQUEST") {
-                const shop = this.data.shops.find(s => s.id === data.shopId);
-                if (shop) {
-                    const bought = shop.boughtItems ? [...shop.boughtItems] : [];
-                    const existingIndex = bought.findIndex(i => i.name === data.item.name);
-                    if (existingIndex !== -1) bought[existingIndex].quantity += data.quantity;
-                    else bought.push({ ...data.item, quantity: data.quantity, id: data.item.id || Math.random().toString(36).substring(2, 9), isVisible: true });
-
-                    const newShop = { ...shop, boughtItems: bought };
-
-                    await OBR.broadcast.sendMessage(SHOP_EVENT_CHANNEL, {
-                        type: "SELL_RESPONSE", success: true, transactionId: data.transactionId,
-                        targetConnectionId: msg.connectionId, targetTokenId: data.targetTokenId,
-                        itemId: data.item.id, quantity: data.quantity, revenue: data.price
-                    }, { destination: "ALL" });
-
-                    this.data.shops = this.data.shops.map(s => s.id === shop.id ? newShop : s);
-                    this.recordLogInternal(`${playerName} 販售了 ${data.quantity} 個 ${data.item.name} 給 ${shop.name}`);
-                    this.unread[1] = true;
-                    this.publishData();
-                }
-            }
+                })
+                .catch((err) => {
+                    console.error("Failed to process shop transaction", err);
+                });
         });
 
         if (this.isGM) {
@@ -501,10 +647,38 @@ class StoryStore {
         }
     };
 
+    broadcastKeyword = (keywordId: string) => {
+        if (!this.isGM) return;
+        this.reloadGMDataFromStorage();
+        const kw = this.data.keywords.find(k => k.id === keywordId);
+        if (kw) {
+            sendCompressedSync({
+                type: "FORCE_OPEN_KEYWORD",
+                keyword: kw
+            }, { destination: "ALL" });
+        }
+    };
+
     updateLegacyLive = (legacy: LegacyItem) => {
         if (!this.isGM) return;
         this.saveLegacies(this.data.legacies.map(l => l.id === legacy.id ? legacy : l));
         sendCompressedSync({ type: "UPDATE_LEGACY_CONTENT", legacy }, { destination: "ALL" });
+    };
+
+    updateLegacyNotes = (legacyId: string, notes: string) => {
+        if (this.isGM) {
+            this.reloadGMDataFromStorage();
+            this.saveLegacies(
+                this.data.legacies.map(l => (l.id === legacyId ? { ...l, partyNotes: notes } : l))
+            );
+        } else {
+            this.data.legacies = this.data.legacies.map(l =>
+                l.id === legacyId ? { ...l, partyNotes: notes } : l
+            );
+            localStorage.setItem(`${PLAYER_STORAGE_KEY}/${OBR.room.id}`, JSON.stringify(this.data));
+            this.notify();
+        }
+        sendCompressedSync({ type: "UPDATE_LEGACY_NOTES", legacyId, notes }, { destination: "ALL" });
     };
 
     toggleQuestCompletion = (questId: string) => {
@@ -549,15 +723,19 @@ class StoryStore {
     };
 
     clearUnread = (idx: number) => { this.unread[idx] = false; this.notify(); };
+    clearUnreadQuest = (questId: string) => {
+        if (this.unreadQuestIds[questId]) {
+            delete this.unreadQuestIds[questId];
+            this.notify();
+        }
+    };
     subscribe = (fn: () => void) => { this.listeners.push(fn); return () => { this.listeners = this.listeners.filter(l => l !== fn); }; };
     notify = () => this.listeners.forEach(fn => fn());
 }
 
 export const storyStore = new StoryStore();
 
-const isMainPanelView = typeof window !== "undefined" &&
-    window.location.pathname === "/" &&
-    new URLSearchParams(window.location.search).get("view") !== "legacy-reader";
+const isMainPanelView = typeof window !== "undefined" && window.location.pathname === "/";
 
 if (isMainPanelView) {
     OBR.onReady(() => storyStore.init());
@@ -574,6 +752,7 @@ export function useStoryData() {
     const [logs, setLogs] = useState(storyStore.data.logs);
     const [isGM, setIsGM] = useState(storyStore.isGM);
     const [unread, setUnread] = useState(storyStore.unread);
+    const [unreadQuestIds, setUnreadQuestIds] = useState(storyStore.unreadQuestIds);
 
     useEffect(() => {
         const updateState = () => {
@@ -587,13 +766,14 @@ export function useStoryData() {
             setLogs(storyStore.data.logs);
             setIsGM(storyStore.isGM);
             setUnread({ ...storyStore.unread });
+            setUnreadQuestIds({ ...storyStore.unreadQuestIds });
         };
         updateState();
         return storyStore.subscribe(updateState);
     }, []);
 
     return {
-        categories, quests, keywords, recaps, shops, loots, legacies, logs, isGM, unread,
+        categories, quests, keywords, recaps, shops, loots, legacies, logs, isGM, unread, unreadQuestIds,
         saveQuestCategories: storyStore.saveQuestCategories,
         saveQuests: storyStore.saveQuests,
         saveKeywords: storyStore.saveKeywords,
@@ -603,10 +783,13 @@ export function useStoryData() {
         saveLegacies: storyStore.saveLegacies,
         importData: storyStore.importData,
         broadcastLegacy: storyStore.broadcastLegacy,
+        broadcastKeyword: storyStore.broadcastKeyword,
         updateLegacyLive: storyStore.updateLegacyLive,
+        updateLegacyNotes: storyStore.updateLegacyNotes,
         toggleQuestCompletion: storyStore.toggleQuestCompletion,
         getFullData: () => storyStore.data,
         clearUnread: storyStore.clearUnread,
+        clearUnreadQuest: storyStore.clearUnreadQuest,
         saveSingleQuest: storyStore.saveSingleQuest,
         deleteSingleQuest: storyStore.deleteSingleQuest,
         reorderQuests: storyStore.reorderQuests,

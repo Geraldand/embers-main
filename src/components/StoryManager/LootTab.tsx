@@ -1,36 +1,51 @@
 // src/components/StoryManager/LootTab.tsx
 import { useState, useEffect, useRef } from "react";
 import OBR from "@owlbear-rodeo/sdk";
-import { FaCirclePlus, FaPencil, FaEye, FaEyeSlash, FaTrash, FaCircleCheck, FaCircleExclamation, FaDiceD20, FaUnlock, FaLock, FaXmark, FaScroll, FaUpload, FaDownload, FaCoins, FaWeightHanging } from "react-icons/fa6";
-import { LootSource, LootItem } from "./types";
+import {
+    FaCirclePlus,
+    FaPencil,
+    FaEye,
+    FaEyeSlash,
+    FaTrash,
+    FaUpload,
+    FaDownload,
+    FaCircleCheck,
+    FaCircleExclamation,
+    FaScroll,
+    FaCoins,
+    FaXmark,
+    FaWeightHanging,
+    FaCompass,
+    FaImage,
+    FaCloudArrowUp,
+    FaWandMagicSparkles
+} from "react-icons/fa6";
+import { LootSource } from "./types";
 import { useStoryData } from "./store";
-import { LOOT_SCENARIO_LABELS, getRandomScenarioText } from "./constants";
-import { NumberInputBlock } from "./ShopTab";
+import { LOOT_SCENARIOS, LOOT_SCENARIO_LABELS, LEGACY_THEMES, getRandomScenarioText } from "./constants";
+import { compressImageFile } from "./ShopTab";
+import { ImageCropper, CroppedImage, DEFAULT_IMAGE_CROP, openGlobalImageViewer } from "./ImageCropper";
 import { downloadFileFromString } from "../../utils";
 
-const SHOP_EVENT_CHANNEL = "com.yourname.character-sheet-extension/shop-events";
 const META_ID = "com.yourname.character-sheet-extension/metadata";
 const CURR_ID = "com.yourname.character-sheet-extension/currency";
+export const ACTIVE_LOOT_STORAGE_KEY = "eu.armindo.embers/active-loot-id";
 
-const RARITY_COLORS: Record<string, string> = {
-    none: "text-mirage-900 dark:text-mirage-50",
-    common: "text-slate-600 dark:text-slate-300",
-    uncommon: "text-emerald-600 dark:text-emerald-400",
-    rare: "text-blue-600 dark:text-blue-400",
-    very_rare: "text-purple-600 dark:text-purple-400",
-    legendary: "text-orange-500 dark:text-orange-400",
-    artifact: "text-red-600 dark:text-red-500"
-};
+function playClickSound() {
+    try {
+        const audio = new Audio("/click.mp3");
+        audio.volume = 0.15;
+        audio.play().catch(() => {});
+    } catch (e) {}
+}
 
-const RARITY_LABELS: Record<string, string> = {
-    none: "無",
-    common: "普通",
-    uncommon: "非凡",
-    rare: "稀有",
-    very_rare: "極稀有",
-    legendary: "傳說",
-    artifact: "神器"
-};
+function playLootOpenSound() {
+    try {
+        const audio = new Audio("/loot_open.mp3");
+        audio.volume = 0.3;
+        audio.play().catch(() => {});
+    } catch (e) {}
+}
 
 const INVENTORY_CATEGORIES = [
     { id: "equipped", name: "裝備中", weight: 0 },
@@ -43,46 +58,34 @@ const INVENTORY_CATEGORIES = [
     { id: "other", name: "備用格", weight: 0 }
 ];
 
-function playClickSound() { try { const audio = new Audio('/click.mp3'); audio.volume = 0.15; audio.play().catch(() => { }); } catch (e) { } }
-function playLootOpenSound() { try { const audio = new Audio('/loot_open.mp3'); audio.volume = 0.3; audio.play().catch(() => { }); } catch (e) { } }
-function playLootTakeSound() { try { const audio = new Audio('/loot_take.mp3'); audio.volume = 0.3; audio.play().catch(() => { }); } catch (e) { } }
-
-// 折疊說明的專屬元件
-const CollapsibleDescription = ({ text }: { text?: string }) => {
-    const [isExpanded, setIsExpanded] = useState(false);
-    if (!text) return null;
-    return (
-        <div
-            onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
-            className={`mt-1.5 text-sm text-mirage-500 whitespace-pre-wrap break-words cursor-pointer hover:text-mirage-400 transition-colors ${!isExpanded ? "line-clamp-2 overflow-hidden" : ""}`}
-            title={!isExpanded ? "點擊展開說明" : "點擊收起說明"}
-        >
-            {text}
-        </div>
-    );
-};
+export function pickLootScenarioSentence(source?: LootSource | null): string {
+    if (!source) return "正在搜尋周遭線索...";
+    if (source.customScenarios && source.customScenarios.length > 0) {
+        const valid = source.customScenarios.filter(s => s.trim() !== "");
+        if (valid.length > 0) {
+            return valid[Math.floor(Math.random() * valid.length)];
+        }
+    }
+    return getRandomScenarioText("loot", source.scenarioKey || "humanoid");
+}
 
 export default function LootTab() {
     const { loots, logs, isGM, saveLoots } = useStoryData();
     const [sourceModalOpen, setSourceModalOpen] = useState(false);
-    const [itemModalOpen, setItemModalOpen] = useState(false);
+    const [editTab, setEditTab] = useState<"basic" | "background" | "scenarios">("basic");
     const [logModalOpen, setLogModalOpen] = useState(false);
     const [editingSource, setEditingSource] = useState<LootSource | null>(null);
-    const [editingItem, setEditingItem] = useState<LootItem | null>(null);
-    const [targetSourceId, setTargetSourceId] = useState<string>("");
     const [formSource, setFormSource] = useState<Partial<LootSource>>({});
-    const [formItem, setFormItem] = useState<Partial<LootItem>>({});
+    const [newScenarioInput, setNewScenarioInput] = useState("");
     const [activeTokenId, setActiveTokenId] = useState<string | null>(null);
-    const [activeTokenName, setActiveTokenName] = useState<string>("沒有人");
+    const [activeTokenName, setActiveTokenName] = useState<string>("請點選角色");
     const [activeTokenGold, setActiveTokenGold] = useState<number | null>(null);
-    const [activeTokenWeight, setActiveTokenWeight] = useState<{ current: number, max: number } | null>(null);
-    const [toastMsg, setToastMsg] = useState<{ text: string, type: "success" | "error" } | null>(null);
-    const [expandedSourceId, setExpandedSourceId] = useState<string | null>(null);
+    const [activeTokenWeight, setActiveTokenWeight] = useState<{ current: number; max: number } | null>(null);
+    const [toastMsg, setToastMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
     const [activeScenarioText, setActiveScenarioText] = useState("正在查看殘骸...");
     const [confirmDeleteSource, setConfirmDeleteSource] = useState<string | null>(null);
-    const [confirmDeleteItem, setConfirmDeleteItem] = useState<string | null>(null);
 
-    const [processingItems, setProcessingItems] = useState<Record<string, boolean>>({});
+    const bgFileInputRef = useRef<HTMLInputElement | null>(null);
 
     const fetchTokenData = async (tokenId: string) => {
         const items = await OBR.scene.items.getItems([tokenId]);
@@ -91,13 +94,27 @@ export default function LootTab() {
             const meta = (token.metadata[META_ID] as any) || {};
             const rawCurr = token.metadata[CURR_ID] || meta.currency;
             const currency = rawCurr || { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 };
-            setActiveTokenGold((currency.cp / 100) + (currency.sp / 10) + (currency.ep / 2) + (currency.gp || 0) + (currency.pp * 10));
+            setActiveTokenGold(
+                (currency.cp / 100) +
+                (currency.sp / 10) +
+                (currency.ep / 2) +
+                (currency.gp || 0) +
+                (currency.pp * 10)
+            );
 
             const rawInv = token.metadata["com.yourname.character-sheet-extension/inventory"] || meta.inventory || [];
             const inventory = Array.isArray(rawInv) ? rawInv : [];
             const itemsWeight = inventory.reduce((acc: number, i: any) => acc + ((i.weight || 0) * (i.quantity || 0)), 0);
-            const activeContainersWeight = INVENTORY_CATEGORIES.reduce((acc, cat) => inventory.some((i: any) => i.category === cat.id) ? acc + cat.weight : acc, 0);
-            const coinWeight = ((currency.cp || 0) + (currency.sp || 0) + (currency.ep || 0) + (currency.gp || 0) + (currency.pp || 0)) / 50;
+            const activeContainersWeight = INVENTORY_CATEGORIES.reduce(
+                (acc, cat) => (inventory.some((i: any) => i.category === cat.id) ? acc + cat.weight : acc),
+                0
+            );
+            const coinWeight =
+                ((currency.cp || 0) +
+                    (currency.sp || 0) +
+                    (currency.ep || 0) +
+                    (currency.gp || 0) +
+                    (currency.pp || 0)) / 50;
             const currentW = +(itemsWeight + activeContainersWeight + coinWeight).toFixed(1);
 
             const abilities = meta.abilities || { str: 10 };
@@ -110,10 +127,17 @@ export default function LootTab() {
     useEffect(() => {
         const updateActiveToken = async (selection: string[] | undefined | null) => {
             const safeSelection = selection || [];
-            if (safeSelection.length !== 1) { setActiveTokenId(null); setActiveTokenName("請點選角色"); setActiveTokenGold(null); setActiveTokenWeight(null); return; }
+            if (safeSelection.length !== 1) {
+                setActiveTokenId(null);
+                setActiveTokenName("請點選角色");
+                setActiveTokenGold(null);
+                setActiveTokenWeight(null);
+                return;
+            }
             const items = await OBR.scene.items.getItems([safeSelection[0]]);
             if (items.length > 0) {
-                setActiveTokenId(items[0].id); setActiveTokenName((items[0] as any).text?.plainText || items[0].name || "未命名");
+                setActiveTokenId(items[0].id);
+                setActiveTokenName((items[0] as any).text?.plainText || items[0].name || "未命名");
                 fetchTokenData(items[0].id);
             }
         };
@@ -123,184 +147,119 @@ export default function LootTab() {
     }, []);
 
     useEffect(() => {
-        if (!activeTokenId) return;
-        const unsubItems = OBR.scene.items.onChange((items) => {
-            const updatedToken = items.find(i => i.id === activeTokenId);
-            if (updatedToken) {
-                fetchTokenData(activeTokenId);
+        const handleGiftNotification = (e: any) => {
+            const detail = e.detail;
+            if (!detail || !detail.recipientTokenId) return;
+            if (activeTokenId && detail.recipientTokenId === activeTokenId) {
+                setToastMsg({
+                    text: `收到來自 ${detail.senderName} 的贈與：${detail.summary}`,
+                    type: "success"
+                });
+                setTimeout(() => setToastMsg(null), 3500);
             }
-        });
-        return () => unsubItems();
-    }, [activeTokenId]);
-
-    useEffect(() => {
-        const handleLootResponses = async (message: any) => {
-            const data = message.data;
-            if (!data || data.type !== "LOOT_RESPONSE") return;
-            const myConnectionId = await OBR.player.getConnectionId();
-            if (data.targetConnectionId && data.targetConnectionId !== myConnectionId) return;
-
-            if (data.success) { 
-                playLootTakeSound(); 
-                setToastMsg({ text: data.message, type: "success" }); 
-
-                // Support both regular items and currency items
-                const receivedItem = data.currencyItem || data.item;
-
-                if (receivedItem?.isCurrency && activeTokenId) {
-                    const items = await OBR.scene.items.getItems([activeTokenId]);
-                    if (items.length > 0) {
-                        const token = items[0];
-                        const meta = (token.metadata[META_ID] as any) || {};
-                        const rawCurr = token.metadata[CURR_ID] || meta.currency || { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 };
-                        
-                        const totalAddedCp = Math.round(receivedItem.cost * data.quantity * 100);
-
-                        let remainingCp = totalAddedCp;
-                        const addedPp = Math.floor(remainingCp / 1000);
-                        remainingCp %= 1000;
-                        const addedGp = Math.floor(remainingCp / 100);
-                        remainingCp %= 100;
-                        const addedSp = Math.floor(remainingCp / 10);
-                        remainingCp %= 10;
-                        const addedCpFinal = remainingCp;
-
-                        const fixedPp = Math.floor(rawCurr.pp || 0);
-                        const fixedGp = Math.floor(rawCurr.gp || 0);
-                        const fixedEp = Math.floor(rawCurr.ep || 0);
-                        const fixedSp = Math.floor(rawCurr.sp || 0);
-                        
-                        const dustPp = (rawCurr.pp || 0) - fixedPp;
-                        const dustGp = (rawCurr.gp || 0) - fixedGp;
-                        const dustEp = (rawCurr.ep || 0) - fixedEp;
-                        const dustSp = (rawCurr.sp || 0) - fixedSp;
-                        
-                        const fixedCp = Math.round(
-                            dustPp * 1000 + 
-                            dustGp * 100 + 
-                            dustEp * 50 + 
-                            dustSp * 10 + 
-                            (rawCurr.cp || 0)
-                        );
-
-                        const newCurr = { 
-                            pp: fixedPp + addedPp,
-                            gp: fixedGp + addedGp,
-                            ep: fixedEp,
-                            sp: fixedSp + addedSp,
-                            cp: fixedCp + addedCpFinal
-                        };
-
-                        await OBR.scene.items.updateItems([activeTokenId], (draft) => {
-                            if (draft[0].metadata[CURR_ID] !== undefined) {
-                                draft[0].metadata[CURR_ID] = newCurr;
-                            } else {
-                                draft[0].metadata[META_ID] = { ...meta, currency: newCurr };
-                            }
-                        });
-                    }
-                }
-
-                if (activeTokenId) fetchTokenData(activeTokenId);
-            } else {
-                setToastMsg({ text: data.message, type: "error" });
-            }
-            setTimeout(() => setToastMsg(null), 3000);
         };
-        const unsub = OBR.broadcast.onMessage(SHOP_EVENT_CHANNEL, handleLootResponses);
-        return () => unsub();
+        window.addEventListener("gift-received", handleGiftNotification);
+        return () => window.removeEventListener("gift-received", handleGiftNotification);
     }, [activeTokenId]);
 
-    const lastExpandedRef = useRef<string | null>(null);
-    useEffect(() => {
-        if (expandedSourceId !== lastExpandedRef.current) {
-            if (expandedSourceId) {
-                const source = loots.find(s => s.id === expandedSourceId);
-                setActiveScenarioText(getRandomScenarioText("loot", source?.scenarioKey || "humanoid"));
-            } else {
-                setActiveScenarioText("正在查看殘骸...");
-            }
-            lastExpandedRef.current = expandedSourceId;
-        }
-    }, [expandedSourceId, loots]);
+    const openCentralLootModal = async (source: LootSource) => {
+        playLootOpenSound();
+        setActiveScenarioText(pickLootScenarioSentence(source));
+        localStorage.setItem(ACTIVE_LOOT_STORAGE_KEY, source.id);
+
+        const [viewWidth, viewHeight] = await Promise.all([
+            OBR.viewport.getWidth(),
+            OBR.viewport.getHeight()
+        ]);
+        const modalWidth = Math.min(960, Math.max(580, Math.floor(viewWidth * 0.88)));
+        const modalHeight = Math.min(680, Math.max(420, Math.floor(viewHeight * 0.86)));
+
+        await OBR.modal.open({
+            id: "eu.armindo.embers/loot-modal",
+            url: `/?view=loot-modal&lootId=${encodeURIComponent(source.id)}`,
+            width: modalWidth,
+            height: modalHeight,
+            fullScreen: false
+        });
+    };
 
     const handleSaveSource = () => {
         playClickSound();
         const newSource: LootSource = {
             id: editingSource?.id || Date.now().toString(36),
-            name: formSource.name || "未命名戰利品",
+            name: formSource.name || "未命名探索地區",
             description: formSource.description || "",
             scenarioKey: formSource.scenarioKey || "humanoid",
-            items: editingSource?.items || [],
+            customScenarios: (formSource.customScenarios || []).filter(s => s.trim() !== ""),
+            themeId: formSource.themeId || "panel",
+            backgroundImageUrl: formSource.backgroundImageUrl || "",
+            imageCrop: formSource.imageCrop || { ...DEFAULT_IMAGE_CROP },
+            subCategories: editingSource?.subCategories || formSource.subCategories || [],
+            hiddenSubCategories: editingSource?.hiddenSubCategories || formSource.hiddenSubCategories || [],
+            items: editingSource?.items || formSource.items || [],
             isVisible: formSource.isVisible ?? false,
             createdAt: editingSource?.createdAt || Date.now()
         };
-        saveLoots(editingSource ? loots.map(s => s.id === editingSource.id ? newSource : s) : [...loots, newSource]);
+        saveLoots(editingSource ? loots.map(s => (s.id === editingSource.id ? newSource : s)) : [...loots, newSource]);
         setSourceModalOpen(false);
     };
 
-    const handleSaveItem = () => {
-        playClickSound();
-        const newItem: LootItem = {
-            id: editingItem?.id || Date.now().toString(36),
-            name: formItem.name || "未知戰利品",
-            description: formItem.description || "",
-            weight: formItem.weight || 0,
-            cost: formItem.cost || 0,
-            rarity: formItem.rarity || "none",
-            category: formItem.category || "backpack",
-            quantity: formItem.quantity || 1,
-            isInfinite: formItem.isInfinite || false,
-            isRevealed: formItem.isRevealed || false,
-            // Add property to new item
-            isCurrency: formItem.isCurrency || false
-        };
-        saveLoots(loots.map(s => s.id === targetSourceId ? { ...s, items: editingItem ? s.items.map(i => i.id === editingItem.id ? newItem : i) : [...s.items, newItem] } : s));
-        setItemModalOpen(false);
-    };
-
-    const handleRandomLoot = (sourceId: string) => {
-        playClickSound();
-        const source = loots.find(s => s.id === sourceId);
-        if (!source) return;
-        const availableItems = source.items.filter(i => !i.isRevealed && (i.isInfinite || i.quantity > 0));
-        if (availableItems.length === 0) {
-            setToastMsg({ text: "已經沒有可揭露的戰利品了！", type: "error" }); setTimeout(() => setToastMsg(null), 3000); return;
-        }
-
-        const selected = availableItems[Math.floor(Math.random() * availableItems.length)];
-        if (selected.isInfinite) {
-            const clone: LootItem = { ...selected, id: Date.now().toString(36), isInfinite: false, isRevealed: true, quantity: 1 };
-            saveLoots(loots.map(s => s.id === sourceId ? { ...s, items: [...s.items, clone] } : s));
-        } else if (selected.quantity > 1) {
-            const clone: LootItem = { ...selected, id: Date.now().toString(36), isRevealed: true, quantity: 1 };
-            const newItems = source.items.map(i => i.id === selected.id ? { ...i, quantity: i.quantity - 1 } : i);
-            newItems.push(clone);
-            saveLoots(loots.map(s => s.id === sourceId ? { ...s, items: newItems } : s));
-        } else {
-            saveLoots(loots.map(s => s.id === sourceId ? { ...s, items: s.items.map(i => i.id === selected.id ? { ...i, isRevealed: true } : i) } : s));
+    const handlePickOBRBackground = async () => {
+        try {
+            const assets = await OBR.assets.downloadImages(false);
+            if (assets && assets.length > 0 && assets[0].image?.url) {
+                setFormSource(prev => ({
+                    ...prev,
+                    backgroundImageUrl: assets[0].image.url,
+                    imageCrop: { ...DEFAULT_IMAGE_CROP }
+                }));
+            }
+        } catch (e) {
+            console.warn("Failed to pick OBR background image", e);
         }
     };
 
-    const handleToggleRevealAll = (sourceId: string, isReveal: boolean) => {
-        playClickSound();
-        saveLoots(loots.map(s => s.id === sourceId ? { ...s, items: s.items.map(i => ({ ...i, isRevealed: isReveal })) } : s));
-        setToastMsg({ text: isReveal ? "已揭露所有戰利品" : "已隱藏所有戰利品", type: "success" }); setTimeout(() => setToastMsg(null), 3000);
+    const handleLocalBgUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+            const compressed = await compressImageFile(file, 800, 0.82);
+            setFormSource(prev => ({
+                ...prev,
+                backgroundImageUrl: compressed,
+                imageCrop: { ...DEFAULT_IMAGE_CROP }
+            }));
+        } catch (err) {
+            console.error("Failed to compress loot background image", err);
+        } finally {
+            e.target.value = "";
+        }
     };
 
-    const handleTake = async (sourceId: string, item: LootItem) => {
-        if (processingItems[item.id]) return;
+    const handleAddScenarioSentence = () => {
+        if (!newScenarioInput.trim()) return;
         playClickSound();
-        if (!item.isInfinite && item.quantity <= 0) { setToastMsg({ text: "此戰利品已被拿完！", type: "error" }); setTimeout(() => setToastMsg(null), 3000); return; }
-        if (!activeTokenId) { setToastMsg({ text: "請先在畫面上點選要拾取的角色！", type: "error" }); setTimeout(() => setToastMsg(null), 3000); return; }
+        setFormSource(prev => ({
+            ...prev,
+            customScenarios: [...(prev.customScenarios || []), newScenarioInput.trim()]
+        }));
+        setNewScenarioInput("");
+    };
 
-        setProcessingItems(prev => ({ ...prev, [item.id]: true }));
-        OBR.broadcast.sendMessage(SHOP_EVENT_CHANNEL, { type: "LOOT_REQUEST", transactionId: Math.random().toString(36).substring(2, 9), sourceId, item, cost: 0, quantity: 1, targetTokenId: activeTokenId }, { destination: "ALL" });
-        setTimeout(() => setProcessingItems(prev => ({ ...prev, [item.id]: false })), 1500);
+    const handleImportPresetScenarios = () => {
+        playClickSound();
+        const key = formSource.scenarioKey || "humanoid";
+        const presets = LOOT_SCENARIOS[key] || [];
+        const existing = new Set(formSource.customScenarios || []);
+        const merged = [...(formSource.customScenarios || [])];
+        presets.forEach(p => {
+            if (!existing.has(p)) merged.push(p);
+        });
+        setFormSource(prev => ({ ...prev, customScenarios: merged }));
     };
 
     const handleExportAllLoots = () => {
-        downloadFileFromString(JSON.stringify(loots, null, 2), `loots_backup.json`);
+        downloadFileFromString(JSON.stringify(loots, null, 2), "loots_backup.json");
     };
 
     const handleImportAllLoots = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -312,62 +271,121 @@ export default function LootTab() {
                 const json = JSON.parse(event.target?.result as string);
                 if (Array.isArray(json)) {
                     saveLoots([...loots, ...json]);
-                    setToastMsg({ text: `成功匯入戰利品群組`, type: "success" }); setTimeout(() => setToastMsg(null), 3000);
+                    setToastMsg({ text: "成功匯入探索地區群組", type: "success" });
+                    setTimeout(() => setToastMsg(null), 3000);
                 }
-            } catch (err) { alert("JSON 解析失敗。"); }
+            } catch (err) {
+                alert("JSON 解析失敗。");
+            }
         };
-        reader.readAsText(file); e.target.value = "";
+        reader.readAsText(file);
+        e.target.value = "";
     };
 
     const visibleLoots = isGM ? loots : loots.filter(s => s.isVisible);
 
+    let weightColor = "text-emerald-400 border-emerald-500/20 bg-emerald-500/10";
+    if (activeTokenWeight) {
+        if (activeTokenWeight.current > activeTokenWeight.max) {
+            weightColor = "text-red-400 border-red-500/30 bg-red-500/15";
+        } else if (activeTokenWeight.current > activeTokenWeight.max * 0.8) {
+            weightColor = "text-orange-400 border-orange-500/30 bg-orange-500/15";
+        }
+    }
+
     return (
         <div className="relative px-1 pb-4">
-            <style>{`.no-scrollbar::-webkit-inner-spin-button { display: none; }`}</style>
+            <input
+                ref={bgFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleLocalBgUpload}
+            />
+
             {toastMsg && (
-                <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-2 px-4 py-2 rounded-full shadow-lg text-xs font-bold text-white animate-in slide-in-from-top-4 fade-in ${toastMsg.type === "success" ? "bg-emerald-600 border border-emerald-400" : "bg-red-600 border border-red-400"}`}>
+                <div
+                    className={`fixed top-4 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-2 px-4 py-2 rounded-full shadow-lg text-xs font-bold text-white animate-in slide-in-from-top-4 fade-in ${
+                        toastMsg.type === "success"
+                            ? "bg-emerald-600 border border-emerald-400"
+                            : "bg-red-600 border border-red-400"
+                    }`}
+                >
                     {toastMsg.type === "success" ? <FaCircleCheck /> : <FaCircleExclamation />} {toastMsg.text}
                 </div>
             )}
 
-            <div className="flex items-center gap-2 p-3 mb-2 bg-transparent border-b border-mirage-200/50 dark:border-mirage-800/50">
-                <span className="text-lg font-black truncate flex-1">
+            {/* Selected Character & Scenario Banner */}
+            <div className="flex items-center gap-2 p-2.5 mb-2.5 bg-transparent border-b border-panel-inactive">
+                <span className="text-base font-black truncate flex-1">
                     <span className="text-[#9c81d8] mr-2">{activeTokenName}</span>
-                    <span className="text-[15px] text-mirage-400 font-bold">{activeScenarioText}</span>
+                    <span className="text-xs text-gray-400 font-bold">{activeScenarioText}</span>
                 </span>
             </div>
 
+            {/* Top Action Bar */}
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pr-2">
                     {activeTokenGold !== null && (
-                        <span className="flex items-center gap-1.5 text-[11px] font-bold text-amber-400 bg-amber-500/10 px-2 py-1.5 rounded-full border border-amber-500/20 shadow-sm shrink-0">
+                        <span className="flex items-center gap-1.5 text-[11px] font-bold text-amber-400 bg-amber-500/10 px-2.5 py-1.5 rounded-full border border-amber-500/20 shadow-sm shrink-0">
                             <FaCoins className="w-3.5 h-3.5" /> {activeTokenGold.toFixed(2)} GP
                         </span>
                     )}
                     {activeTokenWeight !== null && (
-                        <span className="flex items-center gap-1.5 text-[11px] font-bold text-blue-300 bg-blue-400/10 px-2 py-1.5 rounded-full border border-blue-400/20 shadow-sm shrink-0">
+                        <span className={`flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-full border shadow-sm shrink-0 ${weightColor}`}>
                             <FaWeightHanging className="w-3.5 h-3.5" /> {activeTokenWeight.current} / {activeTokenWeight.max} lb
                         </span>
                     )}
                 </div>
 
                 <div className="flex items-center bg-panel-inactive rounded-full shadow-sm ml-auto shrink-0">
-                    <button onClick={() => setLogModalOpen(true)} className="p-2 text-gray-400 hover:text-white transition-colors outline-none" title="日誌">
+                    <button
+                        onClick={() => setLogModalOpen(true)}
+                        className="p-2 text-gray-400 hover:text-white transition-colors outline-none"
+                        title="冒險日誌"
+                    >
                         <FaScroll className="w-3.5 h-3.5" />
                     </button>
                     {isGM && (
                         <>
                             <div className="w-px h-3 bg-gray-600 mx-0.5"></div>
-                            <label className="p-2 text-gray-400 hover:text-panel-active cursor-pointer transition-colors outline-none" title="匯入來源陣列">
+                            <label
+                                className="p-2 text-gray-400 hover:text-panel-active cursor-pointer transition-colors outline-none"
+                                title="匯入探索地區陣列"
+                            >
                                 <FaUpload className="w-3.5 h-3.5" />
                                 <input type="file" accept=".json" className="hidden" onChange={handleImportAllLoots} />
                             </label>
                             <div className="w-px h-3 bg-gray-600 mx-0.5"></div>
-                            <button onClick={handleExportAllLoots} className="p-2 text-gray-400 hover:text-panel-active transition-colors outline-none" title="匯出所有來源">
+                            <button
+                                onClick={handleExportAllLoots}
+                                className="p-2 text-gray-400 hover:text-panel-active transition-colors outline-none"
+                                title="匯出所有探索地區"
+                            >
                                 <FaDownload className="w-3.5 h-3.5" />
                             </button>
                             <div className="w-px h-3 bg-gray-600 mx-0.5"></div>
-                            <button onClick={() => { setEditingSource(null); setFormSource({ isVisible: false, scenarioKey: "humanoid" }); setSourceModalOpen(true); playClickSound(); }} className="p-2 text-white hover:text-panel-active transition-colors outline-none" title="新增來源">
+                            <button
+                                onClick={() => {
+                                    setEditingSource(null);
+                                    setEditTab("basic");
+                                    setFormSource({
+                                        isVisible: true,
+                                        scenarioKey: "humanoid",
+                                        customScenarios: [],
+                                        themeId: "panel",
+                                        backgroundImageUrl: "",
+                                        subCategories: [],
+                                        hiddenSubCategories: [],
+                                        items: []
+                                    });
+                                    setNewScenarioInput("");
+                                    setSourceModalOpen(true);
+                                    playClickSound();
+                                }}
+                                className="p-2 text-white hover:text-panel-active transition-colors outline-none"
+                                title="新增探索地區"
+                            >
                                 <FaCirclePlus className="w-4 h-4" />
                             </button>
                         </>
@@ -375,194 +393,470 @@ export default function LootTab() {
                 </div>
             </div>
 
-            <div className="flex flex-col gap-4 pb-10">
+            {/* Exploration Regions List */}
+            <div className="flex flex-col gap-3.5 pb-10">
+                {visibleLoots.length === 0 && (
+                    <p className="text-xs font-bold text-gray-500 text-center py-10">
+                        目前尚無開放的探索地區，點擊下方按鈕可隨時開啟營地物資交流
+                    </p>
+                )}
+
                 {visibleLoots.map(source => {
-                    const isExpanded = expandedSourceId === source.id;
-                    const allRevealed = source.items.length > 0 && source.items.every(i => i.isRevealed);
+                    const themeObj = LEGACY_THEMES[source.themeId || "panel"] || LEGACY_THEMES.panel;
+                    const hiddenCats = new Set(source.hiddenSubCategories || []);
+                    const isSubCatHiddenForPlayer = (subCat?: string) => {
+                        if (!subCat) return false;
+                        const parts = subCat.split("/").map(p => p.trim()).filter(Boolean);
+                        let acc = "";
+                        for (const p of parts) {
+                            acc = acc ? `${acc} / ${p}` : p;
+                            if (hiddenCats.has(acc) || hiddenCats.has(p)) return true;
+                        }
+                        return false;
+                    };
+
+                    const visibleItemCount = (source.items || []).filter(i =>
+                        isGM ? true : i.isRevealed && !isSubCatHiddenForPlayer(i.subCategory)
+                    ).length;
+
                     return (
-                        <div key={source.id} className={`flex flex-col bg-panel-content rounded-2xl border ${source.isVisible ? "border-panel-inactive" : "border-gray-600 opacity-80"} shadow-sm overflow-hidden`}>
-                            <div className="p-3 bg-panel-inactive/30 flex items-start justify-between gap-2 border-b border-panel-inactive/50 cursor-pointer hover:bg-panel-inactive/50" onClick={() => { if (!isExpanded) playLootOpenSound(); setExpandedSourceId(isExpanded ? null : source.id); }}>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
-                                        <h4 className="font-bold text-xl text-white truncate">{source.name}</h4>
+                        <div
+                            key={source.id}
+                            style={{
+                                backgroundColor: themeObj.bg,
+                                color: themeObj.text,
+                                borderColor: themeObj.border || "rgba(255, 255, 255, 0.12)"
+                            }}
+                            className={`relative flex flex-col rounded-2xl border shadow-md overflow-hidden transition-all ${
+                                !source.isVisible ? "opacity-80" : ""
+                            }`}
+                        >
+                            {source.backgroundImageUrl && (
+                                <div
+                                    onClick={() => openGlobalImageViewer(source.backgroundImageUrl!, source.name)}
+                                    title="點擊檢視完整背景圖"
+                                    className="relative h-28 w-full overflow-hidden cursor-zoom-in group/banner"
+                                >
+                                    <CroppedImage
+                                        src={source.backgroundImageUrl}
+                                        alt={source.name}
+                                        crop={source.imageCrop}
+                                        containerClassName="w-full h-full"
+                                        imgClassName="brightness-105 transition-transform duration-300 group-hover/banner:scale-105"
+                                    />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/20 to-transparent pointer-events-none" />
+                                    <div className="absolute bottom-2.5 left-3.5 right-3.5 flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <h4 className="font-black text-lg text-white drop-shadow truncate">
+                                                {source.name}
+                                            </h4>
+                                            {isGM && !source.isVisible && (
+                                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-500/80 text-white shadow-sm shrink-0">
+                                                    未開放
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
-                                    {source.description && <p className="text-[15px] text-gray-400 mt-1 line-clamp-2">{source.description}</p>}
-                                </div>
-                                {isGM && (
-                                    <div className="flex items-center gap-1 bg-panel-base rounded-full px-1 py-0.5 shadow-inner border border-panel-inactive/50" onClick={e => e.stopPropagation()}>
-                                        <button onClick={(e) => { e.stopPropagation(); handleRandomLoot(source.id); }} className="p-1.5 text-rose-400 hover:text-white outline-none" title="隨機掉落"><FaDiceD20 className="w-3.5 h-3.5" /></button>
-                                        <button onClick={(e) => { e.stopPropagation(); handleToggleRevealAll(source.id, !allRevealed); }} className={`p-1.5 outline-none ${allRevealed ? "text-red-400 hover:text-white" : "text-emerald-300 hover:text-white"}`} title={allRevealed ? "全部隱藏" : "全部揭露"}>{allRevealed ? <FaLock className="w-3.5 h-3.5" /> : <FaUnlock className="w-3.5 h-3.5" />}</button>
-                                        <div className="w-px h-3 bg-gray-600 mx-0.5"></div>
-                                        <button onClick={() => saveLoots(loots.map(s => s.id === source.id ? { ...s, isVisible: !s.isVisible } : s))} className={`p-1.5 outline-none rounded-full ${source.isVisible ? "text-panel-active" : "text-gray-500 hover:text-white"}`} title={source.isVisible ? "隱藏來源" : "顯示來源"}>{source.isVisible ? <FaEye className="w-3.5 h-3.5" /> : <FaEyeSlash className="w-3.5 h-3.5" />}</button>
-                                        <button onClick={() => { setEditingSource(source); setFormSource(source); setSourceModalOpen(true); }} className="p-1.5 text-gray-400 hover:text-white outline-none" title="編輯來源"><FaPencil className="w-3.5 h-3.5" /></button>
-                                        <button onClick={() => confirmDeleteSource === source.id ? saveLoots(loots.filter(s => s.id !== source.id)) : setConfirmDeleteSource(source.id)} onMouseLeave={() => setConfirmDeleteSource(null)} className={`p-1.5 outline-none ${confirmDeleteSource === source.id ? "text-red-500" : "text-gray-400 hover:text-red-500"}`}>{confirmDeleteSource === source.id ? <FaXmark className="w-3.5 h-3.5" /> : <FaTrash className="w-3.5 h-3.5" />}</button>
-                                    </div>
-                                )}
-                            </div>
-
-                            {isExpanded && (
-                                <div className="p-2 flex flex-col gap-1.5 animate-in fade-in">
-                                    {isGM && (
-                                        <div className="flex items-center gap-1.5 mb-1">
-                                            <button onClick={() => { setEditingItem(null); setFormItem({ quantity: 1, cost: 0, weight: 0, isInfinite: false, rarity: "none", category: "backpack" }); setTargetSourceId(source.id); setItemModalOpen(true); playClickSound(); }} className="flex-1 py-1.5 border border-dashed border-panel-inactive hover:border-panel-active rounded-xl text-xs font-bold text-gray-400 hover:text-white transition-colors outline-none flex justify-center items-center gap-1.5">
-                                                <FaCirclePlus className="w-3.5 h-3.5" /> 新增戰利品
-                                            </button>
-                                        </div>
-                                    )}
-
-                                    {isGM && (
-                                        <div className="mt-2 mb-1 px-1 flex justify-between items-end border-b border-panel-inactive/30 pb-1">
-                                            <span className="text-[15px] font-bold text-amber-400">掉落區</span>
-                                        </div>
-                                    )}
-                                    {source.items.filter(i => i.isRevealed).map(item => {
-                                        const isSoldOut = !item.isInfinite && item.quantity <= 0;
-                                        return (
-                                            <div key={item.id} className={`group flex items-center justify-between p-2 rounded-xl bg-panel-base border transition-colors shadow-sm ${isSoldOut ? "border-transparent opacity-50" : "border-panel-inactive hover:border-gray-600"}`}>
-                                                <div className="flex flex-col min-w-0 flex-1 pr-2">
-                                                    <div className="flex items-center gap-1.5 truncate">
-                                                        <span className={`font-bold text-[18px] truncate ${RARITY_COLORS[item.rarity || 'none']}`}>{item.name}</span>
-                                                        {isSoldOut && <span className="text-[11px] bg-red-900/50 text-red-400 px-1 py-0.5 rounded font-black shadow-sm shrink-0">已取完</span>}
-                                                    </div>
-                                                    <div className="flex items-center gap-3 mt-1 text-[13px] text-gray-400 font-bold">
-                                                        <span className="text-amber-400">{item.cost} GP</span><span>•</span><span>{item.weight} lb</span><span>•</span><span>{item.isInfinite ? "無限" : `剩餘: ${item.quantity}`}</span>
-                                                    </div>
-                                                    <CollapsibleDescription text={item.description} />
-                                                </div>
-                                                {isGM ? (
-                                                    <div className="flex flex-col gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0 ml-2">
-                                                        <div className="flex items-center justify-between w-[84px] bg-panel-content rounded-full p-0.5 shadow-sm border border-panel-inactive self-end mt-1">
-                                                            <button onClick={() => saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.map(i => i.id === item.id ? { ...i, quantity: Math.max(0, i.quantity - 1) } : i) } : s))} className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white font-bold outline-none">-</button>
-                                                            <span className="text-xs text-white font-bold text-center flex-1">{item.quantity}</span>
-                                                            <button onClick={() => saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.map(i => i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i) } : s))} className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white font-bold outline-none">+</button>
-                                                        </div>
-                                                        <div className="flex items-center justify-between w-[84px] bg-panel-content rounded-full p-0.5 shadow-sm border border-panel-inactive self-end">
-                                                            <button onClick={() => saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.map(i => i.id === item.id ? { ...i, isRevealed: false } : i) } : s))} className="w-6 h-6 outline-none flex justify-center items-center text-panel-active" title="隱藏戰利品"><FaEye className="w-3.5 h-3.5" /></button>
-                                                            <button onClick={() => { setTargetSourceId(source.id); setEditingItem(item); setFormItem(item); setItemModalOpen(true); playClickSound(); }} className="w-6 h-6 text-gray-400 hover:text-white outline-none flex justify-center items-center"><FaPencil className="w-3.5 h-3.5" /></button>
-                                                            <button onClick={() => confirmDeleteItem === item.id ? saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.filter(i => i.id !== item.id) } : s)) : setConfirmDeleteItem(item.id)} onMouseLeave={() => setConfirmDeleteItem(null)} className={`w-6 h-6 outline-none flex justify-center items-center ${confirmDeleteItem === item.id ? "text-red-500" : "text-gray-400 hover:text-red-500"}`}>{confirmDeleteItem === item.id ? <FaXmark className="w-3.5 h-3.5" /> : <FaTrash className="w-3.5 h-3.5" />}</button>
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex flex-col items-end gap-2 shrink-0 ml-2 pt-1 border-l border-panel-inactive pl-3">
-                                                        <button disabled={isSoldOut || processingItems[item.id]} onClick={() => handleTake(source.id, item)} className={`py-1.5 w-20 text-center rounded-lg text-xs font-bold transition-all outline-none shrink-0 ${isSoldOut ? "bg-panel-inactive text-gray-500 cursor-not-allowed" : processingItems[item.id] ? "bg-gray-600 text-gray-400 cursor-wait" : "bg-panel-active text-white shadow-sm hover:opacity-80"}`}>
-                                                            {processingItems[item.id] ? "處理中" : "拾取"}
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-
-                                    {isGM && source.items.some(i => !i.isRevealed) && (
-                                        <div className="mt-4 mb-1 px-1 flex justify-between items-end border-b border-panel-inactive/30 pb-1">
-                                            <span className="text-[15px] font-bold text-gray-300">戰利品池</span>
-                                        </div>
-                                    )}
-                                    {isGM && source.items.filter(i => !i.isRevealed).map(item => {
-                                        return (
-                                            <div key={item.id} className="group flex items-center justify-between p-2 rounded-xl bg-black/20 border border-transparent hover:border-gray-600 transition-colors shadow-sm opacity-80">
-                                                <div className="flex flex-col min-w-0 flex-1 pr-2">
-                                                    <div className="flex items-center gap-1.5 truncate">
-                                                        <span className="text-[13px] bg-[#9c81d8] text-mirage-400 px-1 py-0.5 rounded font-black shrink-0">隱藏</span>
-                                                        <span className={`font-bold text-[18px] truncate ${RARITY_COLORS[item.rarity || 'none']}`}>{item.name}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-3 mt-1 text-[13px] text-gray-400 font-bold">
-                                                        <span className="text-amber-400">{item.cost} GP</span><span>•</span><span>{item.weight} lb</span><span>•</span><span>{item.isInfinite ? "無限" : `剩餘: ${item.quantity}`}</span>
-                                                    </div>
-                                                    <CollapsibleDescription text={item.description} />
-                                                </div>
-                                                <div className="flex flex-col gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0 ml-2">
-                                                    <div className="flex items-center justify-between w-[84px] bg-panel-content rounded-full p-0.5 shadow-sm border border-panel-inactive self-end mt-1">
-                                                        <button onClick={() => saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.map(i => i.id === item.id ? { ...i, quantity: Math.max(0, i.quantity - 1) } : i) } : s))} className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white font-bold outline-none">-</button>
-                                                        <span className="text-xs text-white font-bold text-center flex-1">{item.quantity}</span>
-                                                        <button onClick={() => saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.map(i => i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i) } : s))} className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-white font-bold outline-none">+</button>
-                                                    </div>
-                                                    <div className="flex items-center justify-between w-[84px] bg-panel-content rounded-full p-0.5 shadow-sm border border-panel-inactive self-end">
-                                                        <button onClick={() => saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.map(i => i.id === item.id ? { ...i, isRevealed: true } : i) } : s))} className="w-6 h-6 outline-none flex justify-center items-center text-gray-500 hover:text-white" title="揭露戰利品給玩家"><FaEyeSlash className="w-3.5 h-3.5" /></button>
-                                                        <button onClick={() => { setTargetSourceId(source.id); setEditingItem(item); setFormItem(item); setItemModalOpen(true); playClickSound(); }} className="w-6 h-6 text-gray-400 hover:text-white outline-none flex justify-center items-center"><FaPencil className="w-3.5 h-3.5" /></button>
-                                                        <button onClick={() => confirmDeleteItem === item.id ? saveLoots(loots.map(s => s.id === source.id ? { ...s, items: s.items.filter(i => i.id !== item.id) } : s)) : setConfirmDeleteItem(item.id)} onMouseLeave={() => setConfirmDeleteItem(null)} className={`w-6 h-6 outline-none flex justify-center items-center ${confirmDeleteItem === item.id ? "text-red-500" : "text-gray-400 hover:text-red-500"}`}>{confirmDeleteItem === item.id ? <FaXmark className="w-3.5 h-3.5" /> : <FaTrash className="w-3.5 h-3.5" />}</button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
                                 </div>
                             )}
+
+                            <div className="p-3.5 flex flex-col gap-2.5">
+                                {!source.backgroundImageUrl && (
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <h4 className="font-black text-lg truncate">{source.name}</h4>
+                                            {isGM && !source.isVisible && (
+                                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-black/30 text-gray-300 border border-white/10 shrink-0">
+                                                    未開放
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {source.description && (
+                                    <p className="text-sm opacity-85 line-clamp-2 leading-relaxed">
+                                        {source.description}
+                                    </p>
+                                )}
+
+                                <div className="flex items-center justify-between pt-2 border-t border-current/10 mt-0.5">
+                                    <span className="text-xs font-bold opacity-75">
+                                        發現物數量：{visibleItemCount}
+                                    </span>
+
+                                    <div className="flex items-center gap-1.5">
+                                        {isGM && (
+                                            <div className="flex items-center gap-1 bg-black/25 text-white rounded-full px-2 py-1">
+                                                <button
+                                                    onClick={() =>
+                                                        saveLoots(
+                                                            loots.map(s =>
+                                                                s.id === source.id ? { ...s, isVisible: !s.isVisible } : s
+                                                            )
+                                                        )
+                                                    }
+                                                    title={source.isVisible ? "對玩家開放中" : "對玩家隱藏中"}
+                                                    className={`p-1 outline-none ${
+                                                        source.isVisible ? "text-amber-300" : "text-gray-400 hover:text-white"
+                                                    }`}
+                                                >
+                                                    {source.isVisible ? <FaEye className="w-3.5 h-3.5" /> : <FaEyeSlash className="w-3.5 h-3.5" />}
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingSource(source);
+                                                        setEditTab("basic");
+                                                        setFormSource({
+                                                            ...source,
+                                                            customScenarios: source.customScenarios || []
+                                                        });
+                                                        setNewScenarioInput("");
+                                                        setSourceModalOpen(true);
+                                                        playClickSound();
+                                                    }}
+                                                    title="編輯地區設定"
+                                                    className="p-1 text-gray-300 hover:text-white outline-none"
+                                                >
+                                                    <FaPencil className="w-3.5 h-3.5" />
+                                                </button>
+                                                <button
+                                                    onClick={() =>
+                                                        confirmDeleteSource === source.id
+                                                            ? saveLoots(loots.filter(s => s.id !== source.id))
+                                                            : setConfirmDeleteSource(source.id)
+                                                    }
+                                                    onMouseLeave={() => setConfirmDeleteSource(null)}
+                                                    title="刪除探索地區"
+                                                    className={`p-1 outline-none ${
+                                                        confirmDeleteSource === source.id
+                                                            ? "text-red-400"
+                                                            : "text-gray-300 hover:text-red-400"
+                                                    }`}
+                                                >
+                                                    {confirmDeleteSource === source.id ? (
+                                                        <FaXmark className="w-3.5 h-3.5" />
+                                                    ) : (
+                                                        <FaTrash className="w-3.5 h-3.5" />
+                                                    )}
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        <button
+                                            onClick={() => openCentralLootModal(source)}
+                                            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-black bg-panel-active text-white shadow-md hover:brightness-110 transition-all outline-none"
+                                        >
+                                            <FaCompass className="w-3.5 h-3.5" /> 進入探索
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     );
                 })}
             </div>
 
+            {/* Logs Modal */}
             {logModalOpen && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
                     <div className="w-full max-w-[400px] h-[80vh] flex flex-col shadow-2xl rounded-2xl bg-panel-content p-5 border border-panel-inactive">
-                        <h3 className="font-bold text-white mb-4">日誌</h3>
+                        <h3 className="font-bold text-white mb-4">冒險與交易日誌</h3>
                         <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-2">
-                            {logs.length === 0 ? <p className="text-xs text-gray-500 text-center mt-10">尚無紀錄</p> : logs.map(l => (
-                                <div key={l.id} className="bg-panel-base p-2.5 rounded-xl text-[13px] text-gray-300 shadow-sm border border-panel-inactive/50 flex flex-col gap-1">
-                                    <span className="text-[10px] text-amber-400">{new Date(l.time).toLocaleTimeString()}</span>{l.message}
-                                </div>
-                            ))}
+                            {logs.length === 0 ? (
+                                <p className="text-xs text-gray-500 text-center mt-10">尚無紀錄</p>
+                            ) : (
+                                logs.map(l => (
+                                    <div
+                                        key={l.id}
+                                        className="bg-panel-base p-2.5 rounded-xl text-[13px] text-gray-300 shadow-sm border border-panel-inactive/50 flex flex-col gap-1"
+                                    >
+                                        <span className="text-[10px] text-amber-400">
+                                            {new Date(l.time).toLocaleTimeString()}
+                                        </span>
+                                        {l.message}
+                                    </div>
+                                ))
+                            )}
                         </div>
-                        <button onClick={() => setLogModalOpen(false)} className="mt-4 w-full py-2 rounded-full text-xs font-bold bg-panel-inactive text-white hover:bg-panel-active outline-none">關閉</button>
+                        <button
+                            onClick={() => setLogModalOpen(false)}
+                            className="mt-4 w-full py-2 rounded-full text-xs font-bold bg-panel-inactive text-white hover:bg-panel-active outline-none"
+                        >
+                            關閉
+                        </button>
                     </div>
                 </div>
             )}
 
+            {/* 3-Tab Create / Edit Exploration Region Modal */}
             {sourceModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-                    <div className="w-full max-w-[360px] flex flex-col shadow-2xl rounded-2xl bg-panel-content p-5 border border-panel-inactive">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="font-bold text-white">{editingSource ? "編輯來源" : "新增來源"}</h3>
+                <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in">
+                    <div className="w-full max-w-[400px] flex flex-col shadow-2xl rounded-2xl bg-panel-content p-5 border border-panel-inactive overflow-hidden">
+                        <div className="flex justify-between items-center mb-3 shrink-0">
+                            <h3 className="font-bold text-white text-base">
+                                {editingSource ? "編輯探索地區" : "新增探索地區"}
+                            </h3>
+                            <button
+                                onClick={() => setSourceModalOpen(false)}
+                                className="text-gray-400 hover:text-white outline-none"
+                            >
+                                <FaXmark className="w-4 h-4" />
+                            </button>
                         </div>
-                        <input autoFocus type="text" value={formSource.name || ""} onChange={(e) => setFormSource({ ...formSource, name: e.target.value })} placeholder="名稱" className="w-full bg-panel-base text-white text-sm font-bold rounded-xl p-2.5 outline-none mb-3 border border-transparent focus:border-panel-active shadow-inner" />
-                        {/* Source description textarea */}
-                        <textarea value={formSource.description || ""} onChange={(e) => setFormSource({ ...formSource, description: e.target.value })} placeholder="來源說明..." className="w-full h-24 bg-panel-base text-gray-300 text-sm rounded-xl p-2.5 outline-none mb-3 border border-transparent focus:border-panel-active resize-none no-scrollbar shadow-inner" />
-                        <select value={formSource.scenarioKey || "humanoid"} onChange={(e) => setFormSource({ ...formSource, scenarioKey: e.target.value })} className="w-full bg-panel-base text-white text-xs font-bold rounded-xl p-2.5 outline-none mb-3 border border-transparent focus:border-panel-active shadow-inner">
-                            {Object.entries(LOOT_SCENARIO_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                        </select>
-                        <div className="flex justify-end gap-2 mt-2">
-                            <button onClick={() => setSourceModalOpen(false)} className="px-4 py-1.5 rounded-full text-xs font-bold text-gray-400 hover:text-white outline-none">取消</button>
-                            <button onClick={handleSaveSource} disabled={!formSource.name} className="px-4 py-1.5 rounded-full text-xs font-bold bg-panel-active text-white outline-none">儲存</button>
+
+                        {/* 3-Tab Pill Switcher */}
+                        <div className="flex bg-panel-base/90 rounded-2xl p-1.5 mb-4 shadow-inner shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    playClickSound();
+                                    setEditTab("basic");
+                                }}
+                                className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all outline-none border ${
+                                    editTab === "basic"
+                                        ? "bg-panel-inactive text-[#bb99ff] shadow-sm border-white/10"
+                                        : "text-gray-400 hover:text-gray-200 border-transparent"
+                                }`}
+                            >
+                                基本資訊
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    playClickSound();
+                                    setEditTab("background");
+                                }}
+                                className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all outline-none border ${
+                                    editTab === "background"
+                                        ? "bg-panel-inactive text-[#bb99ff] shadow-sm border-white/10"
+                                        : "text-gray-400 hover:text-gray-200 border-transparent"
+                                }`}
+                            >
+                                氛圍背景
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    playClickSound();
+                                    setEditTab("scenarios");
+                                }}
+                                className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all outline-none border ${
+                                    editTab === "scenarios"
+                                        ? "bg-panel-inactive text-[#bb99ff] shadow-sm border-white/10"
+                                        : "text-gray-400 hover:text-gray-200 border-transparent"
+                                }`}
+                            >
+                                情境句子
+                            </button>
                         </div>
-                    </div>
-                </div>
-            )}
 
-            {itemModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                    <div className="w-full max-w-[360px] flex flex-col shadow-2xl rounded-2xl bg-panel-content p-5 border border-panel-inactive">
-                        <h3 className="font-bold text-white mb-4">{editingItem ? "編輯戰利品" : "新增戰利品"}</h3>
-                        <div className="flex flex-col gap-3 mb-5">
-                            <input autoFocus type="text" value={formItem.name || ""} onChange={(e) => setFormItem({ ...formItem, name: e.target.value })} placeholder="物品名稱" className="w-full bg-panel-base text-white text-sm font-bold rounded-xl p-2.5 outline-none border border-transparent focus:border-panel-active shadow-inner" />
-                            <textarea value={formItem.description || ""} onChange={(e) => setFormItem({ ...formItem, description: e.target.value })} placeholder="物品說明..." className="w-full h-24 bg-panel-base text-gray-300 text-sm rounded-xl p-2.5 outline-none border border-transparent focus:border-panel-active resize-none no-scrollbar shadow-inner" />
+                        {editTab === "basic" && (
+                            <div className="flex flex-col gap-3 animate-in fade-in">
+                                <input
+                                    autoFocus
+                                    type="text"
+                                    value={formSource.name || ""}
+                                    onChange={(e) => setFormSource({ ...formSource, name: e.target.value })}
+                                    placeholder="探索地區名稱，例如：波浪回音洞窟"
+                                    className="w-full bg-panel-base text-white text-sm font-bold rounded-xl p-2.5 outline-none border border-transparent focus:border-panel-active shadow-inner"
+                                />
+                                <textarea
+                                    value={formSource.description || ""}
+                                    onChange={(e) => setFormSource({ ...formSource, description: e.target.value })}
+                                    placeholder="地區環境簡述..."
+                                    className="w-full h-24 bg-panel-base text-gray-200 text-xs rounded-xl p-2.5 outline-none resize-none overflow-y-auto editor-scrollbar shadow-inner border border-transparent focus:border-panel-active leading-relaxed"
+                                />
 
-                            <div className="flex items-center gap-2">
-                                <select value={formItem.rarity || "none"} onChange={(e) => setFormItem({ ...formItem, rarity: e.target.value })} className={`flex-1 bg-panel-base text-xs font-bold rounded-xl p-2.5 outline-none border border-transparent focus:border-panel-active shadow-inner ${RARITY_COLORS[formItem.rarity || 'none']}`}>
-                                    {Object.entries(RARITY_LABELS).map(([k, v]) => <option key={k} value={k} className={RARITY_COLORS[k]}>{v}</option>)}
-                                </select>
-                                <select value={formItem.category || "backpack"} onChange={(e) => setFormItem({ ...formItem, category: e.target.value })} className="flex-1 bg-panel-base text-white text-xs font-bold rounded-xl p-2.5 outline-none border border-transparent focus:border-panel-active shadow-inner">
-                                    {INVENTORY_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                </select>
-                            </div>
+                                <div className="flex flex-col gap-1">
+                                    <span className="text-[11px] font-bold text-gray-400">介面主題風格</span>
+                                    <select
+                                        value={formSource.themeId || "panel"}
+                                        onChange={(e) => setFormSource({ ...formSource, themeId: e.target.value })}
+                                        className="w-full bg-panel-base text-white text-xs font-bold rounded-xl p-2.5 outline-none border border-transparent focus:border-panel-active"
+                                    >
+                                        {Object.entries(LEGACY_THEMES).map(([k, v]) => (
+                                            <option key={k} value={k}>
+                                                {v.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
 
-                            <div className="flex items-center gap-2">
-                                <NumberInputBlock label="數量" value={formItem.quantity || 0} onChange={(v: number) => setFormItem({ ...formItem, quantity: v })} min={0} step={1} isInteger={true} disabled={formItem.isInfinite} />
-                                <NumberInputBlock label="重(lb)" value={formItem.weight || 0} onChange={(v: number) => setFormItem({ ...formItem, weight: v })} min={0} step={0.1} />
-                                <NumberInputBlock label="價值" value={formItem.cost || 0} onChange={(v: number) => setFormItem({ ...formItem, cost: v })} min={0} step={0.5} />
-                            </div>
-                            <div className="flex items-center gap-2 mt-1">
-                                <button onClick={() => setFormItem({ ...formItem, isInfinite: !formItem.isInfinite })} className={`flex-1 flex items-center justify-center h-9 rounded-xl text-xs font-bold transition-colors outline-none border shadow-sm ${formItem.isInfinite ? "bg-panel-active/20 border-panel-active text-panel-active" : "bg-panel-base border-transparent text-gray-400 hover:text-white"}`}>
-                                    重複抽取
+                                <button
+                                    type="button"
+                                    onClick={() => setFormSource({ ...formSource, isVisible: !formSource.isVisible })}
+                                    className={`w-full h-10 mt-1 rounded-xl text-xs font-bold outline-none border flex items-center justify-center gap-1.5 transition-colors ${
+                                        formSource.isVisible
+                                            ? "bg-panel-active/20 border-panel-active text-panel-active"
+                                            : "bg-panel-base border-transparent text-gray-400 hover:text-white"
+                                    }`}
+                                >
+                                    {formSource.isVisible ? (
+                                        <>
+                                            <FaEye className="w-3.5 h-3.5" /> 開放探索，對玩家公開
+                                        </>
+                                    ) : (
+                                        <>
+                                            <FaEyeSlash className="w-3.5 h-3.5" /> 尚未開放，對玩家隱藏
+                                        </>
+                                    )}
                                 </button>
-                                <button onClick={() => setFormItem({ ...formItem, isCurrency: !formItem.isCurrency })} className={`flex-1 flex items-center justify-center h-9 rounded-xl text-xs font-bold transition-colors outline-none border shadow-sm ${formItem.isCurrency ? "bg-amber-500/20 border-amber-500 text-amber-500" : "bg-panel-base border-transparent text-gray-400 hover:text-white"}`}>
-                                    金錢拾取
-                                </button>
                             </div>
-                        </div>
-                        <div className="flex justify-end gap-2">
-                            <button onClick={() => { playClickSound(); setItemModalOpen(false); }} className="px-4 py-1.5 rounded-full text-xs font-bold text-gray-400 hover:text-white outline-none">取消</button>
-                            <button onClick={handleSaveItem} disabled={!formItem.name} className="px-4 py-1.5 rounded-full text-xs font-bold bg-panel-active text-white outline-none">儲存</button>
+                        )}
+
+                        {editTab === "background" && (
+                            <div className="flex flex-col gap-3 animate-in fade-in">
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={handlePickOBRBackground}
+                                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-panel-base hover:bg-panel-inactive text-xs font-bold text-gray-200 outline-none border border-panel-inactive transition-colors"
+                                    >
+                                        <FaCloudArrowUp className="w-4 h-4 text-panel-active" /> 圖庫選圖
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => bgFileInputRef.current?.click()}
+                                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-panel-base hover:bg-panel-inactive text-xs font-bold text-gray-200 outline-none border border-panel-inactive transition-colors"
+                                    >
+                                        <FaImage className="w-4 h-4 text-amber-400" /> 本機上傳
+                                    </button>
+                                    {formSource.backgroundImageUrl && (
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setFormSource({
+                                                    ...formSource,
+                                                    backgroundImageUrl: "",
+                                                    imageCrop: { ...DEFAULT_IMAGE_CROP }
+                                                })
+                                            }
+                                            className="px-3 py-2.5 rounded-xl bg-panel-base text-xs font-bold text-red-400 hover:text-red-300 outline-none border border-panel-inactive"
+                                        >
+                                            移除
+                                        </button>
+                                    )}
+                                </div>
+
+                                {formSource.backgroundImageUrl ? (
+                                    <ImageCropper
+                                        src={formSource.backgroundImageUrl}
+                                        crop={formSource.imageCrop}
+                                        aspectClassName="h-36"
+                                        onChange={(nextCrop) =>
+                                            setFormSource({ ...formSource, imageCrop: nextCrop })
+                                        }
+                                    />
+                                ) : (
+                                    <div className="w-full h-44 rounded-xl bg-panel-base border border-dashed border-panel-inactive flex flex-col items-center justify-center text-gray-500 text-xs font-bold gap-2">
+                                        <FaImage className="w-6 h-6 opacity-40" />
+                                        <span>尚未設定地區背景圖</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {editTab === "scenarios" && (
+                            <div className="flex flex-col gap-2.5 animate-in fade-in">
+                                <div className="flex items-center justify-between gap-2 bg-panel-base p-2 rounded-xl border border-panel-inactive">
+                                    <select
+                                        value={formSource.scenarioKey || "humanoid"}
+                                        onChange={(e) => setFormSource({ ...formSource, scenarioKey: e.target.value })}
+                                        className="flex-1 bg-transparent text-gray-200 text-xs font-bold outline-none cursor-pointer px-1"
+                                    >
+                                        {Object.entries(LOOT_SCENARIO_LABELS).map(([k, v]) => (
+                                            <option key={k} value={k} className="bg-panel-base">
+                                                預設分類：{v}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <button
+                                        type="button"
+                                        onClick={handleImportPresetScenarios}
+                                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-panel-content hover:bg-panel-active text-xs font-bold text-amber-400 hover:text-white outline-none transition-colors shrink-0"
+                                    >
+                                        <FaWandMagicSparkles className="w-3 h-3" /> 匯入範本
+                                    </button>
+                                </div>
+
+                                <div className="flex items-center gap-1.5">
+                                    <input
+                                        type="text"
+                                        value={newScenarioInput}
+                                        onChange={(e) => setNewScenarioInput(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                handleAddScenarioSentence();
+                                            }
+                                        }}
+                                        placeholder="新增專屬探索情境，如：正在仔細檢查石壁上的機關..."
+                                        className="flex-1 bg-panel-base text-white text-xs rounded-xl p-2.5 outline-none border border-transparent focus:border-panel-active"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleAddScenarioSentence}
+                                        className="px-3.5 py-2.5 rounded-xl bg-panel-active text-white text-xs font-bold outline-none shrink-0"
+                                    >
+                                        新增
+                                    </button>
+                                </div>
+
+                                {(formSource.customScenarios || []).length > 0 ? (
+                                    <div className="h-44 overflow-y-auto no-scrollbar flex flex-col gap-1.5 pr-0.5">
+                                        {(formSource.customScenarios || []).map((sentence, sIdx) => (
+                                            <div
+                                                key={sIdx}
+                                                className="flex items-center gap-2 bg-panel-base px-3 py-2 rounded-xl border border-panel-inactive/60"
+                                            >
+                                                <input
+                                                    type="text"
+                                                    value={sentence}
+                                                    onChange={(e) => {
+                                                        const next = [...(formSource.customScenarios || [])];
+                                                        next[sIdx] = e.target.value;
+                                                        setFormSource({ ...formSource, customScenarios: next });
+                                                    }}
+                                                    className="flex-1 bg-transparent text-xs text-gray-200 outline-none"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const next = (formSource.customScenarios || []).filter(
+                                                            (_, i) => i !== sIdx
+                                                        );
+                                                        setFormSource({ ...formSource, customScenarios: next });
+                                                    }}
+                                                    className="text-gray-500 hover:text-red-400 outline-none"
+                                                >
+                                                    <FaTrash className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="h-44 rounded-xl bg-panel-base/50 border border-dashed border-panel-inactive flex items-center justify-center p-4 text-center text-xs text-gray-500 font-bold">
+                                        目前無自訂句子，將自動使用預設分類探索句。可於上方輸入新增或點擊匯入範本。
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-panel-base shrink-0">
+                            <button
+                                onClick={() => setSourceModalOpen(false)}
+                                className="px-4 py-1.5 rounded-full text-xs font-bold text-gray-400 hover:text-white outline-none"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={handleSaveSource}
+                                disabled={!formSource.name}
+                                className="px-5 py-1.5 rounded-full text-xs font-bold bg-panel-active text-white outline-none disabled:opacity-50"
+                            >
+                                儲存地區
+                            </button>
                         </div>
                     </div>
                 </div>

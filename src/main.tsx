@@ -17,6 +17,9 @@ import { createRoot, Root } from "react-dom/client";
 import { log_error } from "./logging.ts";
 import { setupAudioUnlock } from "./utils.ts";
 import LegacyReaderModal from "./views/LegacyReaderModal.tsx";
+import ShopModal from "./views/ShopModal.tsx";
+import LootModal from "./views/LootModal.tsx";
+import ImageViewerModal from "./views/ImageViewerModal.tsx";
 
 let root: Root | null = null;
 
@@ -27,6 +30,15 @@ function ExtensionMultiplexer() {
     
     if (searchParams.get("view") === "legacy-reader") {
         return <LegacyReaderModal />;
+    }
+    if (searchParams.get("view") === "shop-modal") {
+        return <ShopModal />;
+    }
+    if (searchParams.get("view") === "loot-modal") {
+        return <LootModal />;
+    }
+    if (searchParams.get("view") === "image-viewer") {
+        return <ImageViewerModal />;
     }
     
     useEffect(() => {
@@ -101,6 +113,27 @@ if (params.get("view") === "legacy-reader") {
         <ThemeProvider theme={darkTheme}>
             <CssBaseline />
             <LegacyReaderModal />
+        </ThemeProvider>
+    );
+} else if (params.get("view") === "shop-modal") {
+    root.render(
+        <ThemeProvider theme={darkTheme}>
+            <CssBaseline />
+            <ShopModal />
+        </ThemeProvider>
+    );
+} else if (params.get("view") === "loot-modal") {
+    root.render(
+        <ThemeProvider theme={darkTheme}>
+            <CssBaseline />
+            <LootModal />
+        </ThemeProvider>
+    );
+} else if (params.get("view") === "image-viewer") {
+    root.render(
+        <ThemeProvider theme={darkTheme}>
+            <CssBaseline />
+            <ImageViewerModal />
         </ThemeProvider>
     );
 } else {
