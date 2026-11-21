@@ -23,7 +23,8 @@ import {
     FaDoorOpen,
     FaImage,
     FaCloudArrowUp,
-    FaWandMagicSparkles
+    FaWandMagicSparkles,
+    FaBagShopping
 } from "react-icons/fa6";
 import { Shop } from "./types";
 import { useStoryData } from "./store";
@@ -271,6 +272,7 @@ export default function ShopTab() {
             boughtItems: editingShop?.boughtItems || [],
             isVisible: formShop.isVisible ?? false,
             priceMultiplier: formShop.priceMultiplier || 1,
+            buybackMultiplier: Math.min(1, Math.max(0, formShop.buybackMultiplier ?? 1)),
             createdAt: editingShop?.createdAt || Date.now()
         };
         saveShops(editingShop ? shops.map(s => (s.id === editingShop.id ? newShop : s)) : [...shops, newShop]);
@@ -487,6 +489,7 @@ export default function ShopTab() {
                                     setFormShop({
                                         isVisible: true,
                                         priceMultiplier: 1,
+                                        buybackMultiplier: 1,
                                         scenarioKey: "tavern",
                                         customScenarios: [],
                                         themeId: "panel",
@@ -580,14 +583,36 @@ export default function ShopTab() {
                                     </p>
                                 )}
 
-                                <div className="flex items-center justify-between pt-2 border-t border-current/10 mt-0.5">
-                                    <span className="text-xs font-bold opacity-75">
-                                        商品數：{visibleItemCount}
-                                    </span>
+                                <div className="flex items-center justify-between gap-2 pt-2 border-t border-current/10 mt-0.5">
+                                    {/* Stacked icon metrics to save horizontal space */}
+                                    <div className="flex flex-col gap-0.5 text-[11px] font-bold opacity-85 shrink-0">
+                                        <span
+                                            title={`商品數量：${visibleItemCount}`}
+                                            className="flex items-center gap-1.5 whitespace-nowrap"
+                                        >
+                                            <FaBagShopping className="w-3 h-3 opacity-75 shrink-0" />
+                                            <span>{visibleItemCount}</span>
+                                        </span>
+                                        <span
+                                            title={
+                                                (shop.buybackMultiplier ?? 1) <= 0
+                                                    ? "本店不收購物品"
+                                                    : `收購物品倍率：x${shop.buybackMultiplier ?? 1}`
+                                            }
+                                            className="flex items-center gap-1.5 text-amber-400 whitespace-nowrap"
+                                        >
+                                            <FaCoins className="w-3 h-3 shrink-0" />
+                                            <span>
+                                                {(shop.buybackMultiplier ?? 1) <= 0
+                                                    ? "不收"
+                                                    : `x${shop.buybackMultiplier ?? 1}`}
+                                            </span>
+                                        </span>
+                                    </div>
 
-                                    <div className="flex items-center gap-1.5">
+                                    <div className="flex items-center gap-1.5 shrink-0">
                                         {isGM && (
-                                            <div className="flex items-center gap-1 bg-black/25 text-white rounded-full px-2 py-1">
+                                            <div className="flex items-center gap-0.5 bg-black/25 text-white rounded-full px-2 py-1 shrink-0">
                                                 <select
                                                     value={shop.priceMultiplier}
                                                     onChange={(e) =>
@@ -599,7 +624,7 @@ export default function ShopTab() {
                                                             )
                                                         )
                                                     }
-                                                    className="bg-transparent text-white text-[11px] font-bold outline-none cursor-pointer pr-1"
+                                                    className="bg-transparent text-white text-[11px] font-bold outline-none cursor-pointer pr-0.5"
                                                 >
                                                     <option value={0.5} className="bg-panel-base">x0.5</option>
                                                     <option value={0.8} className="bg-panel-base">x0.8</option>
@@ -664,9 +689,10 @@ export default function ShopTab() {
 
                                         <button
                                             onClick={() => openCentralShopModal(shop)}
-                                            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-black bg-panel-active text-white shadow-md hover:brightness-110 transition-all outline-none"
+                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black bg-panel-active text-white shadow-md hover:brightness-110 transition-all outline-none whitespace-nowrap shrink-0"
                                         >
-                                            <FaDoorOpen className="w-3.5 h-3.5" /> 進入商店
+                                            <FaDoorOpen className="w-3.5 h-3.5 shrink-0" />
+                                            <span>進入商店</span>
                                         </button>
                                     </div>
                                 </div>
@@ -788,24 +814,24 @@ export default function ShopTab() {
                                     className="w-full h-24 bg-panel-base text-gray-200 text-xs rounded-xl p-2.5 outline-none resize-none overflow-y-auto editor-scrollbar shadow-inner border border-transparent focus:border-panel-active leading-relaxed"
                                 />
 
+                                <div className="flex flex-col gap-1">
+                                    <span className="text-[11px] font-bold text-gray-400">介面主題風格</span>
+                                    <select
+                                        value={formShop.themeId || "panel"}
+                                        onChange={(e) => setFormShop({ ...formShop, themeId: e.target.value })}
+                                        className="w-full bg-panel-base text-white text-xs font-bold rounded-xl p-2.5 outline-none border border-transparent focus:border-panel-active"
+                                    >
+                                        {Object.entries(LEGACY_THEMES).map(([k, v]) => (
+                                            <option key={k} value={k}>
+                                                {v.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
                                 <div className="grid grid-cols-2 gap-2.5">
                                     <div className="flex flex-col gap-1">
-                                        <span className="text-[11px] font-bold text-gray-400">介面主題風格</span>
-                                        <select
-                                            value={formShop.themeId || "panel"}
-                                            onChange={(e) => setFormShop({ ...formShop, themeId: e.target.value })}
-                                            className="w-full bg-panel-base text-white text-xs font-bold rounded-xl p-2.5 outline-none border border-transparent focus:border-panel-active"
-                                        >
-                                            {Object.entries(LEGACY_THEMES).map(([k, v]) => (
-                                                <option key={k} value={k}>
-                                                    {v.label}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div className="flex flex-col gap-1">
-                                        <span className="text-[11px] font-bold text-gray-400">商店物價倍率</span>
+                                        <span className="text-[11px] font-bold text-gray-400">販售物價倍率</span>
                                         <select
                                             value={formShop.priceMultiplier || 1}
                                             onChange={(e) =>
@@ -818,6 +844,27 @@ export default function ShopTab() {
                                             <option value={1}>原價 x1.0</option>
                                             <option value={1.5}>漲價 x1.5</option>
                                             <option value={2}>黑店 x2.0</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="flex flex-col gap-1">
+                                        <span className="text-[11px] font-bold text-amber-400">收購物品倍率</span>
+                                        <select
+                                            value={formShop.buybackMultiplier ?? 1}
+                                            onChange={(e) =>
+                                                setFormShop({
+                                                    ...formShop,
+                                                    buybackMultiplier: Math.min(1, Math.max(0, Number(e.target.value)))
+                                                })
+                                            }
+                                            className="w-full bg-panel-base text-white text-xs font-bold rounded-xl p-2.5 outline-none border border-transparent focus:border-panel-active"
+                                        >
+                                            <option value={0}>不收購</option>
+                                            <option value={0.25}>低價 x0.25</option>
+                                            <option value={0.5}>半價 x0.5</option>
+                                            <option value={0.75}>七五折 x0.75</option>
+                                            <option value={0.8}>八折 x0.8</option>
+                                            <option value={1}>原價 x1.0</option>
                                         </select>
                                     </div>
                                 </div>

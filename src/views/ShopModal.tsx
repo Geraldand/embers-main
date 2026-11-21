@@ -719,12 +719,16 @@ export default function ShopModal() {
     const handleSellInventoryItem = (invItem: any) => {
         if (!shop || !activeTokenId || processingIds[invItem.id]) return;
         playClickSound();
+        const buybackMult = Math.min(1, Math.max(0, shop.buybackMultiplier ?? 1));
+        if (buybackMult <= 0) {
+            pushTradeNotice("本店目前不收購物品");
+            return;
+        }
         const qty = Math.min(sellQuantities[invItem.id] || 1, invItem.quantity || 1);
         if (qty <= 0) return;
 
-        const baseCost = Number(invItem.cost) || 0;
-        const effectiveMult = Math.min(1, shop.priceMultiplier || 1);
-        const unitSellPrice = Number((baseCost * effectiveMult).toFixed(2));
+        const baseCost = Math.max(0, Number(invItem.cost) || 0);
+        const unitSellPrice = Number((baseCost * buybackMult).toFixed(2));
 
         setProcessingIds(prev => ({ ...prev, [invItem.id]: true }));
         OBR.broadcast.sendMessage(
@@ -1528,12 +1532,44 @@ export default function ShopModal() {
                                 )}
                             </div>
 
-                            {/* Inventory Filter & Icon-Only Sort Bar */}
-                            <div className="flex items-center justify-between mb-2 shrink-0">
-                                <span className="text-xs font-bold opacity-80">
-                                    行囊物品 {filteredInventory.length}
-                                </span>
-                                <div className="flex items-center gap-1.5">
+                            {/* Inventory Filter, Buyback Rate & Icon-Only Sort Bar */}
+                            <div className="flex items-center justify-between gap-2 mb-2 shrink-0">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-xs font-bold opacity-80 shrink-0">
+                                        行囊物品 {filteredInventory.length}
+                                    </span>
+                                    {isGM ? (
+                                        <select
+                                            value={shop.buybackMultiplier ?? 1}
+                                            onChange={(e) => {
+                                                playClickSound();
+                                                const nextVal = Math.min(1, Math.max(0, Number(e.target.value)));
+                                                saveShops(
+                                                    shops.map(s =>
+                                                        s.id === shop.id ? { ...s, buybackMultiplier: nextVal } : s
+                                                    )
+                                                );
+                                            }}
+                                            title="調整本店收購物品倍率"
+                                            className="bg-amber-500/20 text-amber-300 text-[11px] font-bold rounded-full px-2 py-0.5 border border-amber-400/35 outline-none cursor-pointer"
+                                        >
+                                            <option value={0} className="bg-panel-base text-white">不收購</option>
+                                            <option value={0.25} className="bg-panel-base text-white">收購 x0.25</option>
+                                            <option value={0.5} className="bg-panel-base text-white">收購 x0.5</option>
+                                            <option value={0.75} className="bg-panel-base text-white">收購 x0.75</option>
+                                            <option value={0.8} className="bg-panel-base text-white">收購 x0.8</option>
+                                            <option value={1} className="bg-panel-base text-white">收購 x1.0</option>
+                                        </select>
+                                    ) : (
+                                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-400/30 shrink-0">
+                                            {(shop.buybackMultiplier ?? 1) <= 0
+                                                ? "本店不收購"
+                                                : `收購 x${shop.buybackMultiplier ?? 1}`}
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center gap-1.5 shrink-0">
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -1576,9 +1612,10 @@ export default function ShopModal() {
                                             sellQuantities[invItem.id] || 1,
                                             invItem.quantity || 1
                                         );
-                                        const effectiveMult = Math.min(1, shop.priceMultiplier || 1);
+                                        const buybackMult = Math.min(1, Math.max(0, shop.buybackMultiplier ?? 1));
+                                        const isBuybackDisabled = buybackMult <= 0;
                                         const unitSellPrice = Number(
-                                            ((Number(invItem.cost) || 0) * effectiveMult).toFixed(2)
+                                            (Math.max(0, Number(invItem.cost) || 0) * buybackMult).toFixed(2)
                                         );
                                         const catObj = INVENTORY_CATEGORIES.find(c => c.id === invItem.category);
 
@@ -1619,7 +1656,9 @@ export default function ShopModal() {
                                                         </div>
                                                         <div className="flex items-center gap-2 text-[11px] font-bold opacity-75 mt-0.5">
                                                             <span className="text-amber-400">
-                                                                收購單價：{unitSellPrice.toFixed(2)} GP
+                                                                {isBuybackDisabled
+                                                                    ? "本店不收購"
+                                                                    : `收購單價：${unitSellPrice.toFixed(2)} GP`}
                                                             </span>
                                                             <span>•</span>
                                                             <span>{invItem.weight || 0} lb</span>
@@ -1631,7 +1670,7 @@ export default function ShopModal() {
                                                     onClick={(e) => e.stopPropagation()}
                                                     className="flex items-center gap-1.5 shrink-0"
                                                 >
-                                                    {invItem.quantity > 1 && (
+                                                    {!isBuybackDisabled && invItem.quantity > 1 && (
                                                         <InlineNumberInput
                                                             value={sellQty}
                                                             min={1}
@@ -1649,15 +1688,21 @@ export default function ShopModal() {
                                                     )}
 
                                                     <button
-                                                        disabled={processingIds[invItem.id]}
+                                                        disabled={isBuybackDisabled || processingIds[invItem.id]}
                                                         onClick={() => handleSellInventoryItem(invItem)}
                                                         className={`px-3 py-1.5 rounded-full text-xs font-black outline-none transition-all ${
-                                                            processingIds[invItem.id]
+                                                            isBuybackDisabled
+                                                                ? "bg-black/25 text-gray-400 opacity-50 cursor-not-allowed"
+                                                                : processingIds[invItem.id]
                                                                 ? "bg-gray-600 text-gray-300 cursor-wait"
                                                                 : "bg-amber-600 hover:bg-amber-500 text-white shadow"
                                                         }`}
                                                     >
-                                                        {processingIds[invItem.id] ? "處理中" : "出售"}
+                                                        {isBuybackDisabled
+                                                            ? "不收購"
+                                                            : processingIds[invItem.id]
+                                                            ? "處理中"
+                                                            : "出售"}
                                                     </button>
                                                 </div>
                                             </div>

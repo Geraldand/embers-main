@@ -83,6 +83,7 @@ export interface Shop {
     boughtItems?: ShopItem[];
     isVisible: boolean;
     priceMultiplier: number;
+    buybackMultiplier?: number;
     createdAt: number;
 }
 

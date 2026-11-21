@@ -436,10 +436,10 @@ class StoryStore {
                         }
 
                         if (shop && item && item.quantity >= reqQty) {
+                            const safePriceMult = Math.max(0, Number(shop.priceMultiplier) || 1);
                             const finalUnitCost = isBoughtItem
-                                ? Number(item.cost.toFixed(2))
-                                : Number((item.cost * (shop.priceMultiplier || 1)).toFixed(2));
-
+                                ? Math.max(0, Number(item.cost.toFixed(2)))
+                                : Number((Math.max(0, Number(item.cost) || 0) * safePriceMult).toFixed(2));
                             let newShop: Shop;
                             if (isBoughtItem) {
                                 const newQuantity = item.quantity - reqQty;
@@ -548,9 +548,25 @@ class StoryStore {
                     } else if (data.type === "SELL_REQUEST") {
                         const shop = this.data.shops.find(s => s.id === data.shopId);
                         if (shop) {
-                            const baseItemCost = Number(data.item.cost) || 0;
-                            const effectiveMultiplier = Math.min(1, shop.priceMultiplier || 1);
-                            const unitRevenue = Number((baseItemCost * effectiveMultiplier).toFixed(2));
+                            // Clamp buyback multiplier between 0 and 1 to block any profit arbitrage
+                            const buybackMult = Math.min(1, Math.max(0, shop.buybackMultiplier ?? 1));
+                            if (buybackMult <= 0) {
+                                await OBR.broadcast.sendMessage(
+                                    SHOP_EVENT_CHANNEL,
+                                    {
+                                        type: "SELL_RESPONSE",
+                                        success: false,
+                                        transactionId: data.transactionId,
+                                        targetConnectionId: msg.connectionId,
+                                        message: "本店目前不收購物品！"
+                                    },
+                                    { destination: "ALL" }
+                                );
+                                return;
+                            }
+
+                            const baseItemCost = Math.max(0, Number(data.item.cost) || 0);
+                            const unitRevenue = Number((baseItemCost * buybackMult).toFixed(2));
 
                             const bought = shop.boughtItems ? [...shop.boughtItems] : [];
                             const existingIndex = bought.findIndex(
